@@ -1,0 +1,4 @@
+[submodule "cicflowmeter-tool"]
+	path = cicflowmeter-tool
+	url = https://github.com/hieulw/cicflowmeter.git
+	ignore = dirty
