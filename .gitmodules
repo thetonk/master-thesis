@@ -2,3 +2,7 @@
 	path = datasets/USTC-TFC2016
 	url = https://github.com/davidyslu/USTC-TFC2016.git
 	ignore = all
+[submodule "cicflowmeter-tool"]
+	path = cicflowmeter-tool
+	url = https://github.com/ahlashkari/CICFlowMeter
+	ignore = dirty
