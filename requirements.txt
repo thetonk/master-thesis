@@ -1,8 +1,7 @@
 torch
-torchvision
-torchaudio
 poetry
 jupyter
 pandas
 numpy
 scapy
+matplotlib
