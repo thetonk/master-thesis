@@ -4,5 +4,5 @@
 	ignore = all
 [submodule "cicflowmeter-tool"]
 	path = cicflowmeter-tool
-	url = https://github.com/ahlashkari/CICFlowMeter
+	url = https://github.com/ahlashkari/CICFlowMeter.git
 	ignore = dirty
