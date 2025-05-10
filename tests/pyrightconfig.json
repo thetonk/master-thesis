@@ -1,7 +1,0 @@
-{
-    "reportOptionalMemberAccess": false,
-    "reportGeneralTypeIssues": false,
-    "reportOptionalSubscript": false,
-    "venvPath": ".",
-    "venv": ".venv"
-}
