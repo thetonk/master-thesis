@@ -104,8 +104,8 @@ for parameter in model.parameters():
 
 batch_size = 64
 
-train_data = datasets.MNIST("../datasets/MNIST",train=True, download=True, transform=ToTensor())
-test_data = datasets.MNIST("../datasets/MNIST",train=False, download=True, transform=ToTensor())
+train_data = datasets.MNIST("datasets/MNIST",train=True, download=True, transform=ToTensor())
+test_data = datasets.MNIST("datasets/MNIST",train=False, download=True, transform=ToTensor())
 
 train_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
 test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size)
