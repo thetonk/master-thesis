@@ -52,7 +52,7 @@ def train(data_loader: DataLoader, model: nn.Module, criterion, optimizer):
         
         # Calculate the loss
         loss = criterion(output, target)
-        total_loss += loss
+        total_loss += loss.item()
 
         # Count number of correct digits
         total_correct += correct(output, target)
