@@ -2,9 +2,11 @@ import os
 import multiprocessing
 import torch
 import pandas as pd
+import numpy as np
 
 DATASET_FOLDER = os.path.join("datasets/ids-2018")
 MERGED_DATASET_PATH = os.path.join(DATASET_FOLDER, "ids-2018-merged.csv")
+np.random.seed(42)
 
 non_numeric_columns = ["Src IP", "Dst IP", "Timestamp", "Label"]
 dataset_columns = [
@@ -51,6 +53,9 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path):
                     # drop flow id, since its useless
                     chunk.drop(columns=["Flow ID"], inplace=True, errors="ignore")
 
+                    # drop unnamed columns
+                    chunk = chunk.loc[:, ~chunk.columns.str.contains('^Unnamed')]
+
                     # Convert numeric data to corresponding numeric pandas datatype
                     chunk = _prepare_numeric_columns(chunk)
 
@@ -64,7 +69,11 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path):
 
                     for field in missing_fields:
                         if field not in chunk:
-                            chunk[field] = 0
+                            if field == "Src Port":
+                                # Use ephemeral port range if missing
+                                chunk[field] = np.random.randint(49152, 65536, chunk.shape[0])
+                            else:
+                                chunk[field] = 0
                             chunk[field] = chunk[field].astype(object)
                     chunk = chunk.reindex(columns=dataset_columns)
                     print("Chunk shape:",chunk.shape, "Datatypes:", chunk.dtypes)
@@ -77,15 +86,19 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path):
 
     print(f"CSV dataset merge completed successfully! Total dropped lines: {total_dropped_lines}")
 
-def dataset_to_tensor(dataset_path) -> torch.Tensor:
+def dataset_to_tensor(dataset_path, label_column) -> tuple[torch.Tensor, torch.Tensor]:
     with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
         tensors = pool.map(_chunk_to_tensor, _read_csv_in_chunks(dataset_path))
-    return torch.cat(tensors, dim=0)
+    x_tensor = torch.cat(tensors, dim=0)
+    y_df = pd.read_csv(dataset_path, delimiter=",", usecols=[label_column])
+    y_tensor = torch.tensor(y_df[label_column].astype('category').cat.codes.to_numpy(), dtype=torch.int32)
+    return x_tensor, y_tensor
 
 if __name__ == "__main__":
     torch.set_printoptions(threshold=100)
     if os.path.exists(MERGED_DATASET_PATH):
-        tensor = dataset_to_tensor(MERGED_DATASET_PATH)
-        print(tensor.shape, tensor.dtype)
+        X, y = dataset_to_tensor(MERGED_DATASET_PATH, "Label")
+        print(X.shape, X.dtype)
+        print(y.shape, y.dtype)
     else:
         merge_cicflow_csvs(DATASET_FOLDER, MERGED_DATASET_PATH)

@@ -1,6 +1,6 @@
 torch
 torchvision
-poetry
+torchinfo
 jupyter
 pandas
 numpy
