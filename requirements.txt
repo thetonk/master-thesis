@@ -6,3 +6,5 @@ pandas
 numpy
 scapy
 matplotlib
+torcheval
+scikit-learn

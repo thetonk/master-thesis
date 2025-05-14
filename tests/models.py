@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
-import torchinfo
-from torch.utils.data import random_split, DataLoader, TensorDataset
+#import torchinfo
+from torcheval.metrics import MulticlassAccuracy
+from torch.utils.data import random_split, DataLoader, TensorDataset, Subset
+from sklearn.model_selection import StratifiedKFold
 
 import dataset_utils
 
@@ -21,9 +23,7 @@ import dataset_utils
 #     scaler.step(optimizer)
 #     scaler.update()
 
-
-torch.manual_seed(42)
-
+SEED = 42
 if torch.cuda.is_available():
     print("CUDA available! GPU device name is:", torch.cuda.get_device_name())
     DEVICE = "cuda"
@@ -119,7 +119,7 @@ def train_model(model: nn.Module, train_loader: DataLoader, loss_function = nn.C
         print(f"Epoch {epoch+1}/{epochs}. Average accuracy: {train_accuracy*100:.3f}%, average loss: {train_loss:.5f}, current loss: {loss:.5f}.")
 
 
-def test_model(model: nn.Module, test_loader: DataLoader, loss_function = nn.CrossEntropyLoss()):
+def test_model(model: nn.Module, test_loader: DataLoader, metric, loss_function = nn.CrossEntropyLoss()) -> torch.Tensor:
     model.eval()
     num_batches = len(test_loader)
     num_items = len(test_loader.dataset)
@@ -133,13 +133,15 @@ def test_model(model: nn.Module, test_loader: DataLoader, loss_function = nn.Cro
             loss = loss_function(output, label)
             test_loss = loss.item()
             total_correct += _correct(output, label)
-
+            metric.update(output, label)
     test_loss = test_loss/num_batches
     accuracy = total_correct/num_items
     print(f"Testset accuracy: {100*accuracy:.3f}%, average loss: {test_loss}")
+    return metric.compute()
 
 
 if __name__ == "__main__":
+    torch.manual_seed(SEED)
     X, y = dataset_utils.dataset_to_tensor(dataset_utils.MERGED_DATASET_PATH, "Label")
     # replace nans and infs with the mean of corresponding column
     invalid_values_mask = torch.isnan(X) | torch.isinf(X)
@@ -147,15 +149,27 @@ if __name__ == "__main__":
     col_means = torch.nanmean(X, dim=0)
     X[invalid_values_mask] = col_means.unsqueeze(0).expand(X.shape[0], X.shape[1])[invalid_values_mask]
     dataset = TensorDataset(X, y)
-    train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
+    #train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
     batch_size = 2048
-    train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size)
+    folds = 2
     num_features = X.shape[1]
     num_classes = len(y.unique())
+    metric = MulticlassAccuracy(average=None, num_classes=num_classes)
     print(f"# of features: {num_features}, # of classes: {num_classes}, datatype: {X.dtype}")
-    model = MyModel(num_features, num_classes).to(DEVICE)
-    torchinfo.summary(model, (batch_size, num_features))
-    print("STARTING TRAINING SESSION!!!")
-    train_model(model, train_loader, epochs=5)
-    test_model(model, test_loader)
+    #model = MyModel(num_features, num_classes).to(DEVICE)
+    #torchinfo.summary(model, (batch_size, num_features))
+    strat_kfold = StratifiedKFold(n_splits=folds, shuffle=True, random_state=SEED)
+    for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
+        model = MyModel(num_features, num_classes).to(DEVICE)
+        print("-"*50)
+        print(f"Fold {fold+1}/{folds}")
+        train_dataset = Subset(dataset, train_index)
+        test_dataset = Subset(dataset, test_index)
+        train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True)
+        test_loader = DataLoader(test_dataset, batch_size, pin_memory=True)
+        print("STARTING TRAINING SESSION!!!")
+        train_model(model, train_loader, epochs=5)
+        print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
+        multiclass_accuracy = test_model(model, test_loader, metric)
+        print("Accuracy per class: ", multiclass_accuracy)
+        print("-"*50)
