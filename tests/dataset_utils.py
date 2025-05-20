@@ -13,15 +13,17 @@ def _prepare_numeric_columns(df: pd.DataFrame, label_column = "Label") -> pd.Dat
     non_numeric_columns = ["Src IP", "Dst IP", "Timestamp", label_column]
     for column in df.columns:
         if column not in non_numeric_columns and not pd.api.types.is_numeric_dtype(df[column]):
-            df[column] = pd.to_numeric(df[column], errors="coerce")
+            df[column] = pd.to_numeric(df[column], errors="coerce", downcast="float")
     return df
 
 
 def _read_csv_in_chunks(file_path, label_column="Label", chunk_size=1e+6):
+    # convert all numeric data from float64 to float32, save memory, as model uses float32
     with pd.read_csv(file_path, chunksize=chunk_size, low_memory=False, delimiter=",") as csv_reader:
         for chunk in csv_reader:
             chunk = chunk.drop(columns=["Src IP", "Dst IP", "Timestamp", label_column], errors="ignore")
             chunk = _prepare_numeric_columns(chunk)
+            chunk = chunk.astype("float32")
             print("Chunk shape:",chunk.shape, "Datatypes:", chunk.dtypes)
             yield chunk
 
@@ -47,9 +49,12 @@ def merge_cicflow_csvs(csvs_directory, merged_parquet_path, label_column="Label"
     total_dropped_lines = 0
     header_inserted = False
     for root, _ ,files in os.walk(csvs_directory):
+        sums = None
+        counts = None
         for file in files:
             csv_file_path = os.path.join(root, file)
             print("Merging file {} to {}...".format(csv_file_path, MERGED_DATASET_PATH))
+            print("="*50,"FIRST PASS","="*50)
             with pd.read_csv(csv_file_path, chunksize=chunk_size, low_memory=False, delimiter=",") as csv_reader:
                 for chunk in csv_reader:
                     chunk.columns = chunk.columns.str.replace("_", " ")
@@ -88,15 +93,34 @@ def merge_cicflow_csvs(csvs_directory, merged_parquet_path, label_column="Label"
                     # Convert IP addresses to numbers
                     chunk["Src IP"] = chunk["Src IP"].apply(lambda ip: int(ipaddress.ip_address(ip)))
                     chunk["Dst IP"] = chunk["Dst IP"].apply(lambda ip: int(ipaddress.ip_address(ip)))
-                    
                     chunk = chunk.reindex(columns=dataset_columns)
                     print("Chunk shape:",chunk.shape, "Datatypes:", chunk.dtypes)
-                    
+                    numeric_chunk = chunk.select_dtypes(include="number")
+                    numeric_chunk.replace([np.inf, -np.inf], np.nan, inplace=True)    
+                    chunk_sums = numeric_chunk.sum(skipna=True)
+                    chunk_counts = numeric_chunk.count()
+                    if sums is None:
+                        sums = chunk_sums
+                        counts = chunk_counts
+                    else:
+                        sums += chunk_sums
+                        counts += chunk_counts
                     if not header_inserted:
                         chunk.to_csv(merged_parquet_path, index=False, header=True, mode="w")
                         header_inserted = True
                     else:
                         chunk.to_csv(merged_parquet_path, index=False, header=False, mode="a")
+            print("="*50,"SECOND PASS, REPLACING NaN VALUES WITH MEANS","="*50)
+            tmp_merged_file = MERGED_DATASET_PATH+".tmp"
+            means = sums / counts
+            for i,chunk in enumerate(pd.read_csv(MERGED_DATASET_PATH, delimiter=",", chunksize=chunk_size)):
+                numeric_cols = chunk.select_dtypes(include="number").columns
+                chunk[numeric_cols] = chunk[numeric_cols].replace([np.inf, -np.inf], np.nan)
+                for col in numeric_cols:
+                    chunk[col].fillna(means[col], inplace=True)
+                chunk.to_csv(tmp_merged_file, mode="a", header=(i == 0), index=False)
+            os.remove(MERGED_DATASET_PATH)
+            os.rename(tmp_merged_file, MERGED_DATASET_PATH)
             print(f"Done!")
 
     print(f"CSV dataset merge completed successfully! Total dropped lines: {total_dropped_lines}")

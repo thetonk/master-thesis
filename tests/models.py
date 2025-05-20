@@ -143,13 +143,6 @@ def test_model(model: nn.Module, test_loader: DataLoader, metric, loss_function 
 if __name__ == "__main__":
     torch.manual_seed(SEED)
     X, y = dataset_utils.dataset_to_tensor(dataset_utils.MERGED_DATASET_PATH, "Sub_Cat", chunk_size=3e+6)
-    # replace nans and infs with the mean of corresponding column
-    X[torch.isinf(X)] = torch.nan
-    col_means = torch.nanmean(X, dim=0)
-    nan_indices = torch.isnan(X)
-    print(nan_indices)
-    rows, cols = nan_indices.nonzero(as_tuple=True)
-    X[rows, cols] = nan_indices[cols]
     dataset = TensorDataset(X, y)
     #train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
     batch_size = 2048
