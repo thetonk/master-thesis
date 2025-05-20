@@ -32,7 +32,7 @@ def _chunk_to_tensor(chunk: pd.DataFrame) -> torch.Tensor:
     return torch.tensor(chunk.to_numpy())
 
 
-def merge_cicflow_csvs(csvs_directory, merged_parquet_path, label_column="Label", chunk_size=1e+6):
+def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", chunk_size=1e+6):
     label_column = label_column.replace("_", " ")
     dataset_columns = [
         "Src IP","Src Port","Dst IP","Dst Port","Protocol","Timestamp","Flow Duration","Tot Fwd Pkts","Tot Bwd Pkts","TotLen Fwd Pkts","TotLen Bwd Pkts",
@@ -48,13 +48,13 @@ def merge_cicflow_csvs(csvs_directory, merged_parquet_path, label_column="Label"
     dataset_columns.append(label_column)
     total_dropped_lines = 0
     header_inserted = False
+    sums = None
+    counts = None
+    print("="*50,"FIRST PASS","="*50)
     for root, _ ,files in os.walk(csvs_directory):
-        sums = None
-        counts = None
         for file in files:
             csv_file_path = os.path.join(root, file)
             print("Merging file {} to {}...".format(csv_file_path, MERGED_DATASET_PATH))
-            print("="*50,"FIRST PASS","="*50)
             with pd.read_csv(csv_file_path, chunksize=chunk_size, low_memory=False, delimiter=",") as csv_reader:
                 for chunk in csv_reader:
                     chunk.columns = chunk.columns.str.replace("_", " ")
@@ -68,9 +68,6 @@ def merge_cicflow_csvs(csvs_directory, merged_parquet_path, label_column="Label"
 
                     if label_column != "Label" and "Label" in chunk.columns:
                         chunk.drop(columns=["Label"], inplace=True, errors="ignore")
-
-                    # Convert numeric data to corresponding numeric pandas datatype
-                    chunk = _prepare_numeric_columns(chunk, label_column=label_column)
 
                     # drop rows with dst port and protocol equal to 0
                     bad_rows = chunk[(chunk['Protocol'] == 0) & (chunk['Dst Port'] == 0) & (chunk[label_column] == "Benign")]
@@ -94,8 +91,13 @@ def merge_cicflow_csvs(csvs_directory, merged_parquet_path, label_column="Label"
                     chunk["Src IP"] = chunk["Src IP"].apply(lambda ip: int(ipaddress.ip_address(ip)))
                     chunk["Dst IP"] = chunk["Dst IP"].apply(lambda ip: int(ipaddress.ip_address(ip)))
                     chunk = chunk.reindex(columns=dataset_columns)
+
+                    # Convert numeric data to corresponding numeric pandas datatype
+                    chunk = _prepare_numeric_columns(chunk, label_column=label_column)
+
                     print("Chunk shape:",chunk.shape, "Datatypes:", chunk.dtypes)
                     numeric_chunk = chunk.select_dtypes(include="number")
+
                     numeric_chunk.replace([np.inf, -np.inf], np.nan, inplace=True)    
                     chunk_sums = numeric_chunk.sum(skipna=True)
                     chunk_counts = numeric_chunk.count()
@@ -106,23 +108,30 @@ def merge_cicflow_csvs(csvs_directory, merged_parquet_path, label_column="Label"
                         sums += chunk_sums
                         counts += chunk_counts
                     if not header_inserted:
-                        chunk.to_csv(merged_parquet_path, index=False, header=True, mode="w")
+                        chunk.to_csv(merged_csv_path, index=False, header=True, mode="w")
                         header_inserted = True
                     else:
-                        chunk.to_csv(merged_parquet_path, index=False, header=False, mode="a")
-            print("="*50,"SECOND PASS, REPLACING NaN VALUES WITH MEANS","="*50)
-            tmp_merged_file = MERGED_DATASET_PATH+".tmp"
-            means = sums / counts
-            for i,chunk in enumerate(pd.read_csv(MERGED_DATASET_PATH, delimiter=",", chunksize=chunk_size)):
-                numeric_cols = chunk.select_dtypes(include="number").columns
-                chunk[numeric_cols] = chunk[numeric_cols].replace([np.inf, -np.inf], np.nan)
-                for col in numeric_cols:
-                    chunk[col].fillna(means[col], inplace=True)
-                chunk.to_csv(tmp_merged_file, mode="a", header=(i == 0), index=False)
-            os.remove(MERGED_DATASET_PATH)
-            os.rename(tmp_merged_file, MERGED_DATASET_PATH)
+                        chunk.to_csv(merged_csv_path, index=False, header=False, mode="a")
             print(f"Done!")
+        
+    print("="*40,"SECOND PASS, REPLACING NaN VALUES WITH MEANS","="*40)
+    tmp_merged_file = MERGED_DATASET_PATH+".tmp"
+    means = sums / counts
+    for i,chunk in enumerate(pd.read_csv(MERGED_DATASET_PATH, delimiter=",", chunksize=chunk_size)):
+        # Convert numeric data to corresponding numeric pandas datatype
+        chunk = _prepare_numeric_columns(chunk, label_column=label_column)
+        numeric_cols = chunk.select_dtypes(include="number").columns
+        chunk[numeric_cols] = chunk[numeric_cols].replace([np.inf, -np.inf], np.nan)
+        for col in numeric_cols:
+            if pd.notna(means[col]):
+                chunk[col] = chunk[col].fillna(means[col])
+            else:
+                print(f"Warning! {col} has a mean of NaN! Replacing NaNs of this column with 0!")
+                chunk[col] = chunk[col].fillna(0)
+        chunk.to_csv(tmp_merged_file, mode="a", header=(i == 0), index=False)
 
+    os.remove(MERGED_DATASET_PATH)
+    os.rename(tmp_merged_file, MERGED_DATASET_PATH)
     print(f"CSV dataset merge completed successfully! Total dropped lines: {total_dropped_lines}")
 
 
@@ -139,9 +148,9 @@ def dataset_to_tensor(dataset_path, label_column, chunk_size=1e+6) -> tuple[torc
 if __name__ == "__main__":
     torch.set_printoptions(threshold=100)
     if os.path.exists(MERGED_DATASET_PATH):
-        X, y = dataset_to_tensor(MERGED_DATASET_PATH, "Label", chunk_size=2e+6)
+        X, y = dataset_to_tensor(MERGED_DATASET_PATH, "Sub_Cat", chunk_size=2e+6)
         print(X.shape, X.dtype)
         print(y.shape, y.dtype)
         pass
     else:
-        merge_cicflow_csvs(DATASET_FOLDER, MERGED_DATASET_PATH, label_column="Label", chunk_size=2e+6)
+        merge_cicflow_csvs(DATASET_FOLDER, MERGED_DATASET_PATH, label_column="Sub_Cat", chunk_size=2e+6)

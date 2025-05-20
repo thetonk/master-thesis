@@ -150,7 +150,7 @@ if __name__ == "__main__":
     num_features = X.shape[1]
     num_classes = len(y.unique())
     metric = MulticlassAccuracy(average=None, num_classes=num_classes)
-    print(f"# of features: {num_features}, # of classes: {num_classes}, datatype: {X.dtype}")
+    print(f"# of rows: {X.shape[0]}, # of features: {num_features}, # of classes: {num_classes}, datatype: {X.dtype}")
     #model = MyModel(num_features, num_classes).to(DEVICE)
     #torchinfo.summary(model, (batch_size, num_features))
     strat_kfold = StratifiedKFold(n_splits=folds, shuffle=True, random_state=SEED)
