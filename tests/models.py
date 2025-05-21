@@ -3,8 +3,9 @@ import torch.nn as nn
 #import torchinfo
 from torcheval.metrics import MulticlassAccuracy
 from torch.utils.data import random_split, DataLoader, TensorDataset, Subset
+import shap
+from shap.plots import beeswarm, bar
 from sklearn.model_selection import StratifiedKFold
-
 import dataset_utils
 
 # CODE TO CHECK ON TRAINER, FOR TRAINING SPEED BOOST. WORKS ON AMPERE GPU DEVICES OR NEWER
@@ -142,18 +143,19 @@ def test_model(model: nn.Module, test_loader: DataLoader, metric, loss_function 
 
 if __name__ == "__main__":
     torch.manual_seed(SEED)
-    X, y = dataset_utils.dataset_to_tensor(dataset_utils.MERGED_DATASET_PATH, "Sub_Cat", chunk_size=3e+6)
+    X, y, label_map = dataset_utils.dataset_to_tensor(dataset_utils.MERGED_DATASET_PATH, "Sub_Cat", chunk_size=3e+6)
     dataset = TensorDataset(X, y)
     #train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
-    batch_size = 2048
+    batch_size = 1024
     folds = 2
     num_features = X.shape[1]
-    num_classes = len(y.unique())
-    metric = MulticlassAccuracy(average=None, num_classes=num_classes)
+    num_classes = len(label_map)
+    metric = MulticlassAccuracy(average=None, num_classes=num_classes, device=DEVICE)
     print(f"# of rows: {X.shape[0]}, # of features: {num_features}, # of classes: {num_classes}, datatype: {X.dtype}")
     #model = MyModel(num_features, num_classes).to(DEVICE)
     #torchinfo.summary(model, (batch_size, num_features))
     strat_kfold = StratifiedKFold(n_splits=folds, shuffle=True, random_state=SEED)
+    final_model = None
     for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
         model = MyModel(num_features, num_classes).to(DEVICE)
         print("-"*50)
@@ -166,5 +168,34 @@ if __name__ == "__main__":
         train_model(model, train_loader, epochs=5)
         print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
         multiclass_accuracy = test_model(model, test_loader, metric)
-        print("Accuracy per class: ", multiclass_accuracy)
+        print("Accuracy per class:")
+        for i, class_accuracy in enumerate(multiclass_accuracy):
+            print(f"{label_map[i]}: {class_accuracy*100} %")
         print("-"*50)
+        final_model = model
+        
+    final_model = final_model.to("cpu")
+    shap_batch_loader = DataLoader(dataset, 110, shuffle=True)
+    features, _ = next(iter(shap_batch_loader))
+    features = features.cpu().detach()
+    final_model.eval()
+    background = features[:100]
+    test_values = features[100:]
+    with torch.no_grad():
+        base_values = final_model(background).mean(dim=0).numpy()
+    explainer = shap.GradientExplainer(final_model,background)
+    shap_values = explainer.shap_values(test_values)
+    # Create Explanation object for class 0 (you can loop for others)
+    shap_explanation = shap.Explanation(
+        values=shap_values[0].T,                           # SHAP values for class 0
+        base_values=base_values[0],                      # base value for class 0
+        data=features[100:].numpy(),                  # input data
+        feature_names=[f'feature_{i}' for i in range(features.shape[1])]
+    )
+    print("base values", base_values)
+    print("features", features.shape[1])
+    print("shap 0 value shape", shap_values[0].shape)
+    print("test values shape", test_values.shape)
+    print(shap_values)
+    #shap.initjs()
+    bar(shap_explanation, max_display=10)

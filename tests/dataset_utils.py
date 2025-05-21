@@ -135,14 +135,14 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
     print(f"CSV dataset merge completed successfully! Total dropped lines: {total_dropped_lines}")
 
 
-def dataset_to_tensor(dataset_path, label_column, chunk_size=1e+6) -> tuple[torch.Tensor, torch.Tensor]:
+def dataset_to_tensor(dataset_path, label_column, chunk_size=1e+6) -> tuple[torch.Tensor, torch.Tensor, dict]:
     label_column = label_column.replace("_", " ")
     with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
         tensors = pool.map(_chunk_to_tensor, _read_csv_in_chunks(dataset_path, label_column=label_column, chunk_size=chunk_size))
     x_tensor = torch.cat(tensors, dim=0).float()
     y_df = pd.read_csv(dataset_path, delimiter=",", usecols=[label_column], dtype={label_column: "category"})
     y_tensor = torch.tensor(y_df[label_column].cat.codes.to_numpy(), dtype=torch.int64)
-    return x_tensor, y_tensor
+    return x_tensor, y_tensor, dict(enumerate(y_df[label_column].cat.categories))
 
 
 if __name__ == "__main__":
