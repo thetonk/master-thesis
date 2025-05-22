@@ -17,19 +17,44 @@ def _prepare_numeric_columns(df: pd.DataFrame, label_column = "Label") -> pd.Dat
     return df
 
 
-def _read_csv_in_chunks(file_path, label_column="Label", chunk_size=1e+6):
-    # convert all numeric data from float64 to float32, save memory, as model uses float32
-    with pd.read_csv(file_path, chunksize=chunk_size, low_memory=False, delimiter=",") as csv_reader:
-        for chunk in csv_reader:
-            chunk = chunk.drop(columns=["Src IP", "Dst IP", "Timestamp", label_column], errors="ignore")
-            chunk = _prepare_numeric_columns(chunk)
-            chunk = chunk.astype("float32")
-            print("Chunk shape:",chunk.shape, "Datatypes:", chunk.dtypes)
-            yield chunk
+class CSVDataset():
+    def __init__(self, dataset_path, label_column, chunk_size=1e+6):
+        self._chunk_size = chunk_size
+        self._label_column = label_column.replace("_", " ")
+        self._columns_to_drop = ["Src IP", "Dst IP", "Timestamp", self._label_column]
+        self.dataset_path = dataset_path
+        self.categories = None
+        self.X = None
+        self.y = None
+        df = pd.read_csv(dataset_path, nrows=0)
+        df = df.drop(columns=self._columns_to_drop, errors="ignore")
+        self.labels = df.columns.to_list()
+    
+    @staticmethod
+    def _read_csv_in_chunks(file_path, columns_to_drop, chunk_size=1e+6):
+        # convert all numeric data from float64 to float32, save memory, as model uses float32
+        with pd.read_csv(file_path, chunksize=chunk_size, low_memory=False, delimiter=",") as csv_reader:
+            for chunk in csv_reader:
+                chunk = chunk.drop(columns=columns_to_drop, errors="ignore")
+                chunk = _prepare_numeric_columns(chunk)
+                chunk = chunk.astype("float32")
+                print("Chunk shape:",chunk.shape, "Datatypes:", chunk.dtypes)
+                yield chunk
 
-
-def _chunk_to_tensor(chunk: pd.DataFrame) -> torch.Tensor:
-    return torch.tensor(chunk.to_numpy())
+    @staticmethod
+    def _chunk_to_tensor(chunk: pd.DataFrame) -> torch.Tensor:
+        return torch.tensor(chunk.to_numpy())
+    
+    def load(self):
+        label_column = self._label_column
+        with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+            tensors = pool.map(CSVDataset._chunk_to_tensor, CSVDataset._read_csv_in_chunks(self.dataset_path, self._columns_to_drop, chunk_size=self._chunk_size))
+        x_tensor = torch.cat(tensors, dim=0).float()
+        y_df = pd.read_csv(self.dataset_path, delimiter=",", usecols=[label_column], dtype={label_column: "category"})
+        y_tensor = torch.tensor(y_df[label_column].cat.codes.to_numpy(), dtype=torch.int64)
+        self.X = x_tensor
+        self.y = y_tensor
+        self.categories = dict(enumerate(y_df[label_column].cat.categories))
 
 
 def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", chunk_size=1e+6):
@@ -135,20 +160,13 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
     print(f"CSV dataset merge completed successfully! Total dropped lines: {total_dropped_lines}")
 
 
-def dataset_to_tensor(dataset_path, label_column, chunk_size=1e+6) -> tuple[torch.Tensor, torch.Tensor, dict]:
-    label_column = label_column.replace("_", " ")
-    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-        tensors = pool.map(_chunk_to_tensor, _read_csv_in_chunks(dataset_path, label_column=label_column, chunk_size=chunk_size))
-    x_tensor = torch.cat(tensors, dim=0).float()
-    y_df = pd.read_csv(dataset_path, delimiter=",", usecols=[label_column], dtype={label_column: "category"})
-    y_tensor = torch.tensor(y_df[label_column].cat.codes.to_numpy(), dtype=torch.int64)
-    return x_tensor, y_tensor, dict(enumerate(y_df[label_column].cat.categories))
-
-
 if __name__ == "__main__":
     torch.set_printoptions(threshold=100)
     if os.path.exists(MERGED_DATASET_PATH):
-        X, y = dataset_to_tensor(MERGED_DATASET_PATH, "Sub_Cat", chunk_size=2e+6)
+        dataset = CSVDataset(MERGED_DATASET_PATH, "Sub_Cat", 2e+6)
+        dataset.load()
+        X = dataset.X
+        y = dataset.y
         print(X.shape, X.dtype)
         print(y.shape, y.dtype)
         pass
