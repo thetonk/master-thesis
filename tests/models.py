@@ -99,7 +99,10 @@ def _correct(output: torch.Tensor, target: torch.Tensor):
 
 def train_model(model: nn.Module, train_loader: DataLoader, loss_function = nn.CrossEntropyLoss(), epochs: int = 30, learning_rate: int = 1e-3):
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    best_accuracy = 0
+    save_model = False
     for epoch in range(epochs):
+        save_model = False
         model.train()
         batch_number = len(train_loader)
         samples = len(train_loader.dataset)
@@ -117,8 +120,14 @@ def train_model(model: nn.Module, train_loader: DataLoader, loss_function = nn.C
             optimizer.step()
         train_loss = total_loss/batch_number
         train_accuracy = total_correct/samples
+        if train_accuracy > best_accuracy:
+            best_accuracy = train_accuracy
+            save_model = True
         print("="*50)
         print(f"Epoch {epoch+1}/{epochs}. Average accuracy: {train_accuracy*100:.3f}%, average loss: {train_loss:.5f}, current loss: {loss:.5f}.")
+        if save_model:
+            print("Saved model!")
+            torch.save(model.state_dict(), "models/best_model.pt")
 
 
 def test_model(model: nn.Module, test_loader: DataLoader, metric, loss_function = nn.CrossEntropyLoss()) -> torch.Tensor:
@@ -144,12 +153,12 @@ def test_model(model: nn.Module, test_loader: DataLoader, metric, loss_function 
 
 if __name__ == "__main__":
     torch.manual_seed(SEED)
-    csv_dataset = dataset_utils.CSVDataset(dataset_utils.MERGED_DATASET_PATH, "Sub_Cat", chunk_size=3e+6)
+    csv_dataset = dataset_utils.CSVDataset(dataset_utils.MERGED_DATASET_PATH, "Cat", chunk_size=3e+6)
     csv_dataset.load()
-    X, y, category_map, label_list = csv_dataset.X, csv_dataset.y, csv_dataset.categories, csv_dataset.labels
+    X, y, category_map, feature_names = csv_dataset.X, csv_dataset.y, csv_dataset.categories, csv_dataset.features
     dataset = TensorDataset(X, y)
     #train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
-    batch_size = 1024
+    batch_size = 1500
     folds = 2
     epochs = 5
     num_features = X.shape[1]
@@ -166,8 +175,8 @@ if __name__ == "__main__":
         print(f"Fold {fold+1}/{folds}")
         train_dataset = Subset(dataset, train_index)
         test_dataset = Subset(dataset, test_index)
-        train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True)
-        test_loader = DataLoader(test_dataset, batch_size, pin_memory=True)
+        train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=10)
+        test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=10)
         print("STARTING TRAINING SESSION!!!")
         train_model(model, train_loader, epochs=epochs)
         print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
@@ -203,13 +212,13 @@ if __name__ == "__main__":
             values=shap_values[i].T,                           # SHAP values for class i
             base_values=base_values[i],                      # base value for class i
             data=features[100:].numpy(),                  # input data
-            feature_names=label_list
+            feature_names=feature_names
         )
         print(f"shap {i} value shape", shap_values[i].shape)
         bar(shap_explanation, max_display=10, ax=axes[i], show=False)
         # Explicitly set font size for axis labels
-        axes[i].set_xlabel(axes[i].get_xlabel(), fontsize=4)
-        axes[i].set_ylabel(axes[i].get_ylabel(), fontsize=4)
+        axes[i].set_xlabel(axes[i].get_xlabel(), fontsize=3)
+        axes[i].set_ylabel(axes[i].get_ylabel(), fontsize=3)
         # Set tick label font sizes
         for tick in axes[i].get_xticklabels():
             tick.set_fontsize(4)
@@ -218,10 +227,10 @@ if __name__ == "__main__":
         for child in axes[i].get_children():
             if isinstance(child, plt.Text):
                 # This filters the number labels — skip titles, labels etc.
-                if child.get_position()[0] > 0:  # you can also filter by text content or location
-                    child.set_fontsize(4)
+                if child.get_position()[0] > 0:
+                    child.set_fontsize(3)
         # Set title font size
-        axes[i].set_title(category_map[i], fontsize=6, pad=4)
+        axes[i].set_title(category_map[i], fontsize=5, pad=4)
 
     plt.tight_layout(pad=0.8)
     plt.show()

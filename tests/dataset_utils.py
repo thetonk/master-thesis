@@ -5,9 +5,20 @@ import torch
 import pandas as pd
 import numpy as np
 
-DATASET_FOLDER = os.path.join("/home/sbaltsas/Visual Studio Code Projects/thesis/datasets/IoT-23")
-MERGED_DATASET_PATH = os.path.join(DATASET_FOLDER, "IoT-23-merged.csv")
+DATASET_FOLDER = os.path.join("datasets/mqtt-iot-ids2020")
+MERGED_DATASET_PATH = os.path.join(DATASET_FOLDER, "MQTT-IoT-IDS2020.csv")
 np.random.seed(42)
+
+FEATURE_COLUMNS = [
+    "Src IP","Src Port","Dst IP","Dst Port","Protocol","Timestamp","Flow Duration","Tot Fwd Pkts","Tot Bwd Pkts","TotLen Fwd Pkts","TotLen Bwd Pkts",
+    "Fwd Pkt Len Max","Fwd Pkt Len Min","Fwd Pkt Len Mean","Fwd Pkt Len Std","Bwd Pkt Len Max","Bwd Pkt Len Min","Bwd Pkt Len Mean","Bwd Pkt Len Std","Flow Byts/s",
+    "Flow Pkts/s","Flow IAT Mean","Flow IAT Std","Flow IAT Max","Flow IAT Min","Fwd IAT Tot","Fwd IAT Mean","Fwd IAT Std","Fwd IAT Max","Fwd IAT Min","Bwd IAT Tot",
+    "Bwd IAT Mean","Bwd IAT Std","Bwd IAT Max","Bwd IAT Min","Fwd PSH Flags","Bwd PSH Flags","Fwd URG Flags","Bwd URG Flags","Fwd Header Len","Bwd Header Len",
+    "Fwd Pkts/s","Bwd Pkts/s","Pkt Len Min","Pkt Len Max","Pkt Len Mean","Pkt Len Std","Pkt Len Var","FIN Flag Cnt","SYN Flag Cnt","RST Flag Cnt","PSH Flag Cnt","ACK Flag Cnt",
+    "URG Flag Cnt","CWE Flag Count","ECE Flag Cnt","Down/Up Ratio","Pkt Size Avg","Fwd Seg Size Avg","Bwd Seg Size Avg","Fwd Byts/b Avg","Fwd Pkts/b Avg","Fwd Blk Rate Avg",
+    "Bwd Byts/b Avg","Bwd Pkts/b Avg","Bwd Blk Rate Avg","Subflow Fwd Pkts","Subflow Fwd Byts","Subflow Bwd Pkts","Subflow Bwd Byts","Init Fwd Win Byts","Init Bwd Win Byts",
+    "Fwd Act Data Pkts","Fwd Seg Size Min","Active Mean","Active Std","Active Max","Active Min","Idle Mean","Idle Std","Idle Max","Idle Min"
+]
 
 def _prepare_numeric_columns(df: pd.DataFrame, label_column = "Label") -> pd.DataFrame:
     non_numeric_columns = ["Src IP", "Dst IP", "Timestamp", label_column]
@@ -18,23 +29,26 @@ def _prepare_numeric_columns(df: pd.DataFrame, label_column = "Label") -> pd.Dat
 
 
 class CSVDataset():
-    def __init__(self, dataset_path, label_column, chunk_size=1e+6):
+    def __init__(self, dataset_path, label_column, feature_columns=FEATURE_COLUMNS, chunk_size=1e+6):
         self._chunk_size = chunk_size
         self._label_column = label_column.replace("_", " ")
-        self._columns_to_drop = ["Src IP", "Dst IP", "Timestamp", self._label_column]
+        self._columns_to_drop = ["Src IP", "Dst IP", "Timestamp"]
         self.dataset_path = dataset_path
         self.categories = None
         self.X = None
         self.y = None
         df = pd.read_csv(dataset_path, nrows=0)
+        df.columns = df.columns.str.replace("_", " ")
+        self._columns_to_drop = self._columns_to_drop + df.columns.difference(feature_columns).to_list()
         df = df.drop(columns=self._columns_to_drop, errors="ignore")
-        self.labels = df.columns.to_list()
+        self.features = df.columns.to_list()
     
     @staticmethod
     def _read_csv_in_chunks(file_path, columns_to_drop, chunk_size=1e+6):
         # convert all numeric data from float64 to float32, save memory, as model uses float32
         with pd.read_csv(file_path, chunksize=chunk_size, low_memory=False, delimiter=",") as csv_reader:
             for chunk in csv_reader:
+                chunk.columns = chunk.columns.str.replace("_", " ")
                 chunk = chunk.drop(columns=columns_to_drop, errors="ignore")
                 chunk = _prepare_numeric_columns(chunk)
                 chunk = chunk.astype("float32")
@@ -59,18 +73,8 @@ class CSVDataset():
 
 def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", chunk_size=1e+6):
     label_column = label_column.replace("_", " ")
-    dataset_columns = [
-        "Src IP","Src Port","Dst IP","Dst Port","Protocol","Timestamp","Flow Duration","Tot Fwd Pkts","Tot Bwd Pkts","TotLen Fwd Pkts","TotLen Bwd Pkts",
-        "Fwd Pkt Len Max","Fwd Pkt Len Min","Fwd Pkt Len Mean","Fwd Pkt Len Std","Bwd Pkt Len Max","Bwd Pkt Len Min","Bwd Pkt Len Mean","Bwd Pkt Len Std","Flow Byts/s",
-        "Flow Pkts/s","Flow IAT Mean","Flow IAT Std","Flow IAT Max","Flow IAT Min","Fwd IAT Tot","Fwd IAT Mean","Fwd IAT Std","Fwd IAT Max","Fwd IAT Min","Bwd IAT Tot",
-        "Bwd IAT Mean","Bwd IAT Std","Bwd IAT Max","Bwd IAT Min","Fwd PSH Flags","Bwd PSH Flags","Fwd URG Flags","Bwd URG Flags","Fwd Header Len","Bwd Header Len",
-        "Fwd Pkts/s","Bwd Pkts/s","Pkt Len Min","Pkt Len Max","Pkt Len Mean","Pkt Len Std","Pkt Len Var","FIN Flag Cnt","SYN Flag Cnt","RST Flag Cnt","PSH Flag Cnt","ACK Flag Cnt",
-        "URG Flag Cnt","CWE Flag Count","ECE Flag Cnt","Down/Up Ratio","Pkt Size Avg","Fwd Seg Size Avg","Bwd Seg Size Avg","Fwd Byts/b Avg","Fwd Pkts/b Avg","Fwd Blk Rate Avg",
-        "Bwd Byts/b Avg","Bwd Pkts/b Avg","Bwd Blk Rate Avg","Subflow Fwd Pkts","Subflow Fwd Byts","Subflow Bwd Pkts","Subflow Bwd Byts","Init Fwd Win Byts","Init Bwd Win Byts",
-        "Fwd Act Data Pkts","Fwd Seg Size Min","Active Mean","Active Std","Active Max","Active Min","Idle Mean","Idle Std","Idle Max","Idle Min"
-    ]
+    dataset_columns = FEATURE_COLUMNS + [label_column]
     missing_fields = ["Src IP", "Src Port", "Dst IP"]
-    dataset_columns.append(label_column)
     total_dropped_lines = 0
     header_inserted = False
     sums = None
@@ -85,14 +89,12 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
                     chunk.columns = chunk.columns.str.replace("_", " ")
                     # Remove rows that are identical to the header
                     chunk = chunk[chunk.apply(lambda row: not all(str(row[col]) == col for col in chunk.columns), axis=1)]
-                    # drop flow id, since its useless
-                    chunk.drop(columns=["Flow ID"], inplace=True, errors="ignore")
 
                     # drop unnamed columns
                     chunk = chunk.loc[:, ~chunk.columns.str.contains('^Unnamed')]
 
-                    if label_column != "Label" and "Label" in chunk.columns:
-                        chunk.drop(columns=["Label"], inplace=True, errors="ignore")
+                    # drop all columns not in the final dataset list
+                    chunk = chunk.drop(columns=chunk.categories.difference(dataset_columns))
 
                     # drop rows with dst port and protocol equal to 0
                     bad_rows = chunk[(chunk['Protocol'] == 0) & (chunk['Dst Port'] == 0) & (chunk[label_column] == "Benign")]
