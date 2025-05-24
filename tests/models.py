@@ -81,10 +81,16 @@ class MyModel(nn.Module):
     def __init__(self, num_features: int, num_classes: int, num_encoders:int = 1, num_mlps:int = 1):
         super().__init__()
         layer_list = []
-        for _ in range(num_encoders):
-            layer_list.append(EncoderTransformer(num_features))
-        for _ in range(num_mlps):
-            layer_list.append(MLPClassifier(128, num_classes))
+        for i in range(num_encoders):
+            if i == 0:
+                layer_list.append(EncoderTransformer(num_features))
+            else:
+                layer_list.append(EncoderTransformer(128))
+        for i in range(num_mlps):
+            if i == num_mlps - 1:
+                layer_list.append(MLPClassifier(128, num_classes))
+            else:
+                layer_list.append(MLPClassifier(128, 128))
         self.layers = nn.Sequential(*layer_list)
 
 
@@ -153,7 +159,7 @@ def test_model(model: nn.Module, test_loader: DataLoader, metric, loss_function 
 
 if __name__ == "__main__":
     torch.manual_seed(SEED)
-    csv_dataset = dataset_utils.CSVDataset(dataset_utils.MERGED_DATASET_PATH, "Cat", chunk_size=3e+6)
+    csv_dataset = dataset_utils.CSVDataset(dataset_utils.MERGED_DATASET_PATH, "Label", chunk_size=3e+6)
     csv_dataset.load()
     X, y, category_map, feature_names = csv_dataset.X, csv_dataset.y, csv_dataset.categories, csv_dataset.features
     dataset = TensorDataset(X, y)
@@ -180,12 +186,13 @@ if __name__ == "__main__":
         print("STARTING TRAINING SESSION!!!")
         train_model(model, train_loader, epochs=epochs)
         print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
-        multiclass_accuracy = test_model(model, test_loader, metric)
+        final_model = MyModel(num_features, num_classes).to(DEVICE)
+        final_model.load_state_dict(torch.load("models/best_model.pt", weights_only=False))
+        multiclass_accuracy = test_model(final_model, test_loader, metric)
         print("Accuracy per class:")
         for i, class_accuracy in enumerate(multiclass_accuracy):
             print(f"{category_map[i]}: {class_accuracy*100} %")
         print("-"*50)
-        final_model = model
         break
         
     final_model = final_model.to("cpu")

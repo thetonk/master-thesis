@@ -5,8 +5,8 @@ import torch
 import pandas as pd
 import numpy as np
 
-DATASET_FOLDER = os.path.join("datasets/mqtt-iot-ids2020")
-MERGED_DATASET_PATH = os.path.join(DATASET_FOLDER, "MQTT-IoT-IDS2020.csv")
+DATASET_FOLDER = os.path.join("datasets/ids-2018")
+MERGED_DATASET_PATH = os.path.join(DATASET_FOLDER, "ids-2018-binclass.csv")
 np.random.seed(42)
 
 FEATURE_COLUMNS = [
@@ -71,7 +71,7 @@ class CSVDataset():
         self.categories = dict(enumerate(y_df[label_column].cat.categories))
 
 
-def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", chunk_size=1e+6):
+def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", chunk_size=1e+6, bin_benign_label=None):
     label_column = label_column.replace("_", " ")
     dataset_columns = FEATURE_COLUMNS + [label_column]
     missing_fields = ["Src IP", "Src Port", "Dst IP"]
@@ -94,10 +94,14 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
                     chunk = chunk.loc[:, ~chunk.columns.str.contains('^Unnamed')]
 
                     # drop all columns not in the final dataset list
-                    chunk = chunk.drop(columns=chunk.categories.difference(dataset_columns))
+                    chunk = chunk.drop(columns=chunk.columns.difference(dataset_columns))
+
+                    if bin_benign_label is not None:
+                        print("Replacing non benign traffic labels to 'Attack' label!")
+                        chunk.loc[chunk[label_column] != bin_benign_label, label_column] = "Attack"
 
                     # drop rows with dst port and protocol equal to 0
-                    bad_rows = chunk[(chunk['Protocol'] == 0) & (chunk['Dst Port'] == 0) & (chunk[label_column] == "Benign")]
+                    bad_rows = chunk[(chunk['Protocol'] == 0) & (chunk['Dst Port'] == 0) & (chunk[label_column].isin(["Benign", "Normal"]))]
                     if not bad_rows.empty:
                         bad_row_count = len(bad_rows)
                         total_dropped_lines += bad_row_count
@@ -165,12 +169,11 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
 if __name__ == "__main__":
     torch.set_printoptions(threshold=100)
     if os.path.exists(MERGED_DATASET_PATH):
-        dataset = CSVDataset(MERGED_DATASET_PATH, "Sub_Cat", 2e+6)
+        dataset = CSVDataset(MERGED_DATASET_PATH, "Label", 2e+6)
         dataset.load()
         X = dataset.X
         y = dataset.y
         print(X.shape, X.dtype)
         print(y.shape, y.dtype)
-        pass
     else:
-        merge_cicflow_csvs(DATASET_FOLDER, MERGED_DATASET_PATH, label_column="Sub_Cat", chunk_size=2e+6)
+        merge_cicflow_csvs(DATASET_FOLDER, MERGED_DATASET_PATH, label_column="Label", chunk_size=2e+6, bin_benign_label="Benign")
