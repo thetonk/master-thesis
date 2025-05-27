@@ -1,0 +1,100 @@
+CUDA available! GPU device name is: NVIDIA GeForce RTX 4060
+Chunk shape: (3000000, 79) Datatypes: Src Port         float32
+Dst Port         float32
+Protocol         float32
+Flow Duration    float32
+Tot Fwd Pkts     float32
+                  ...   
+Active Min       float32
+Idle Mean        float32
+Idle Std         float32
+Idle Max         float32
+Idle Min         float32
+Length: 79, dtype: object
+Chunk shape: (3000000, 79) Datatypes: Src Port         float32
+Dst Port         float32
+Protocol         float32
+Flow Duration    float32
+Tot Fwd Pkts     float32
+                  ...   
+Active Min       float32
+Idle Mean        float32
+Idle Std         float32
+Idle Max         float32
+Idle Min         float32
+Length: 79, dtype: object
+Chunk shape: (3000000, 79) Datatypes: Src Port         float32
+Dst Port         float32
+Protocol         float32
+Flow Duration    float32
+Tot Fwd Pkts     float32
+                  ...   
+Active Min       float32
+Idle Mean        float32
+Idle Std         float32
+Idle Max         float32
+Idle Min         float32
+Length: 79, dtype: object
+Chunk shape: (3000000, 79) Datatypes: Src Port         float32
+Dst Port         float32
+Protocol         float32
+Flow Duration    float32
+Tot Fwd Pkts     float32
+                  ...   
+Active Min       float32
+Idle Mean        float32
+Idle Std         float32
+Idle Max         float32
+Idle Min         float32
+Length: 79, dtype: object
+Chunk shape: (3000000, 79) Datatypes: Src Port         float32
+Dst Port         float32
+Protocol         float32
+Flow Duration    float32
+Tot Fwd Pkts     float32
+                  ...   
+Active Min       float32
+Idle Mean        float32
+Idle Std         float32
+Idle Max         float32
+Idle Min         float32
+Length: 79, dtype: object
+Chunk shape: (1012960, 79) Datatypes: Src Port         float32
+Dst Port         float32
+Protocol         float32
+Flow Duration    float32
+Tot Fwd Pkts     float32
+                  ...   
+Active Min       float32
+Idle Mean        float32
+Idle Std         float32
+Idle Max         float32
+Idle Min         float32
+Length: 79, dtype: object
+# of rows: 16012960, # of features: 79, # of classes: 2, datatype: torch.float32
+STARTING TRAINING SESSION!!!
+==================================================
+Epoch 1/5. Average accuracy: 96.615%, average loss: 0.09232, current loss: 0.08288.
+Saved model!
+==================================================
+Epoch 2/5. Average accuracy: 96.940%, average loss: 0.08216, current loss: 0.10343.
+Saved model!
+==================================================
+Epoch 3/5. Average accuracy: 97.035%, average loss: 0.07971, current loss: 0.07277.
+Saved model!
+==================================================
+Epoch 4/5. Average accuracy: 97.225%, average loss: 0.07512, current loss: 0.04903.
+Saved model!
+==================================================
+Epoch 5/5. Average accuracy: 97.355%, average loss: 0.07333, current loss: 0.05008.
+Saved model!
+TRAINING COMPLETE. STARTING TESTING SESSION!!!
+Testset accuracy: 97.141%, average loss: 1.6405744206034735e-05
+Accuracy per class:
+Attack: 93.80603790283203 %
+Benign: 97.8309097290039 %
+base values [-1.2835654  1.7553546]
+features 79
+test values shape torch.Size([10, 79])
+shap 0 value shape (79, 2)
+shap 1 value shape (79, 2)

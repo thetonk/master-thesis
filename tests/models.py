@@ -88,9 +88,9 @@ class MyModel(nn.Module):
                 layer_list.append(EncoderTransformer(128))
         for i in range(num_mlps):
             if i == num_mlps - 1:
-                layer_list.append(MLPClassifier(128, num_classes))
+                layer_list.append(MLPClassifier(128, num_classes, hidden_neurons=512))
             else:
-                layer_list.append(MLPClassifier(128, 128))
+                layer_list.append(MLPClassifier(128, 128, hidden_neurons=512))
         self.layers = nn.Sequential(*layer_list)
 
 
@@ -159,11 +159,10 @@ def test_model(model: nn.Module, test_loader: DataLoader, metric, loss_function 
 
 if __name__ == "__main__":
     torch.manual_seed(SEED)
-    csv_dataset = dataset_utils.CSVDataset(dataset_utils.MERGED_DATASET_PATH, "Label", chunk_size=3e+6)
+    csv_dataset = dataset_utils.CSVDataset(dataset_utils.MERGED_DATASET_PATH, "Sub_Cat", chunk_size=3e+6)
     csv_dataset.load()
     X, y, category_map, feature_names = csv_dataset.X, csv_dataset.y, csv_dataset.categories, csv_dataset.features
     dataset = TensorDataset(X, y)
-    #train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
     batch_size = 1500
     folds = 2
     epochs = 5
@@ -171,29 +170,43 @@ if __name__ == "__main__":
     num_classes = len(category_map)
     metric = MulticlassAccuracy(average=None, num_classes=num_classes, device=DEVICE)
     print(f"# of rows: {X.shape[0]}, # of features: {num_features}, # of classes: {num_classes}, datatype: {X.dtype}")
-    #model = MyModel(num_features, num_classes).to(DEVICE)
+    model = MyModel(num_features, num_classes).to(DEVICE)
     #torchinfo.summary(model, (batch_size, num_features))
-    strat_kfold = StratifiedKFold(n_splits=folds, shuffle=True, random_state=SEED)
-    final_model = None
-    for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
-        model = MyModel(num_features, num_classes).to(DEVICE)
-        print("-"*50)
-        print(f"Fold {fold+1}/{folds}")
-        train_dataset = Subset(dataset, train_index)
-        test_dataset = Subset(dataset, test_index)
-        train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=10)
-        test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=10)
-        print("STARTING TRAINING SESSION!!!")
-        train_model(model, train_loader, epochs=epochs)
-        print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
-        final_model = MyModel(num_features, num_classes).to(DEVICE)
-        final_model.load_state_dict(torch.load("models/best_model.pt", weights_only=False))
-        multiclass_accuracy = test_model(final_model, test_loader, metric)
-        print("Accuracy per class:")
-        for i, class_accuracy in enumerate(multiclass_accuracy):
-            print(f"{category_map[i]}: {class_accuracy*100} %")
-        print("-"*50)
-        break
+    # THIS CODE IS FOR RANDOM SPLIT TRAIN-TEST
+    train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
+    train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=10)
+    test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=10)
+    print("STARTING TRAINING SESSION!!!")
+    train_model(model, train_loader, epochs=epochs)
+    print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
+    final_model = MyModel(num_features, num_classes).to(DEVICE)
+    final_model.load_state_dict(torch.load("models/best_model.pt", weights_only=False))
+    multiclass_accuracy = test_model(final_model, test_loader, metric)
+    print("Accuracy per class:")
+    for i, class_accuracy in enumerate(multiclass_accuracy):
+        print(f"{category_map[i]}: {class_accuracy*100} %")
+    # THIS CODE IS STRATIFIED KFOLD VALIDATION
+    # strat_kfold = StratifiedKFold(n_splits=folds, shuffle=True, random_state=SEED)
+    # final_model = None
+    # for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
+    #     model = MyModel(num_features, num_classes).to(DEVICE)
+    #     print("-"*50)
+    #     print(f"Fold {fold+1}/{folds}")
+    #     train_dataset = Subset(dataset, train_index)
+    #     test_dataset = Subset(dataset, test_index)
+    #     train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=10)
+    #     test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=10)
+    #     print("STARTING TRAINING SESSION!!!")
+    #     train_model(model, train_loader, epochs=epochs)
+    #     print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
+    #     final_model = MyModel(num_features, num_classes).to(DEVICE)
+    #     final_model.load_state_dict(torch.load("models/best_model.pt", weights_only=False))
+    #     multiclass_accuracy = test_model(final_model, test_loader, metric)
+    #     print("Accuracy per class:")
+    #     for i, class_accuracy in enumerate(multiclass_accuracy):
+    #         print(f"{category_map[i]}: {class_accuracy*100} %")
+    #     print("-"*50)
+    #     break
         
     final_model = final_model.to("cpu")
     shap_batch_loader = DataLoader(dataset, 110, shuffle=True)
@@ -209,7 +222,7 @@ if __name__ == "__main__":
     print("base values", base_values)
     print("features", features.shape[1])
     print("test values shape", test_values.shape)
-    charts_per_row = 3
+    charts_per_row = 2
     rows = num_classes // charts_per_row + ((num_classes % charts_per_row) != 0)
     fig, axes = plt.subplots(rows, charts_per_row, dpi=300, figsize=(charts_per_row*4, rows*3), constrained_layout=True)
     axes = axes.ravel()
@@ -238,6 +251,9 @@ if __name__ == "__main__":
                     child.set_fontsize(3)
         # Set title font size
         axes[i].set_title(category_map[i], fontsize=5, pad=4)
+
+    for i in range(num_classes, len(axes)):
+        fig.delaxes(axes[i])
 
     plt.tight_layout(pad=0.8)
     plt.show()

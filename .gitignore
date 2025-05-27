@@ -2,3 +2,4 @@
 *.log
 datasets/
 __pycache__/
+!tests/logs/*.log
