@@ -1,12 +1,11 @@
 import os
+import sys
 import ipaddress
 import multiprocessing
 import torch
 import pandas as pd
 import numpy as np
 
-DATASET_FOLDER = os.path.join("datasets/ids-2018")
-MERGED_DATASET_PATH = os.path.join(DATASET_FOLDER, "ids-2018-binclass.csv")
 np.random.seed(42)
 
 FEATURE_COLUMNS = [
@@ -83,7 +82,7 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
     for root, _ ,files in os.walk(csvs_directory):
         for file in files:
             csv_file_path = os.path.join(root, file)
-            print("Merging file {} to {}...".format(csv_file_path, MERGED_DATASET_PATH))
+            print("Merging file {} to {}...".format(csv_file_path, merged_csv_path))
             with pd.read_csv(csv_file_path, chunksize=chunk_size, low_memory=False, delimiter=",") as csv_reader:
                 for chunk in csv_reader:
                     chunk.columns = chunk.columns.str.replace("_", " ")
@@ -146,9 +145,9 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
             print(f"Done!")
         
     print("="*40,"SECOND PASS, REPLACING NaN VALUES WITH MEANS","="*40)
-    tmp_merged_file = MERGED_DATASET_PATH+".tmp"
+    tmp_merged_file = merged_csv_path+".tmp"
     means = sums / counts
-    for i,chunk in enumerate(pd.read_csv(MERGED_DATASET_PATH, delimiter=",", chunksize=chunk_size)):
+    for i,chunk in enumerate(pd.read_csv(merged_csv_path, delimiter=",", chunksize=chunk_size)):
         # Convert numeric data to corresponding numeric pandas datatype
         chunk = _prepare_numeric_columns(chunk, label_column=label_column)
         numeric_cols = chunk.select_dtypes(include="number").columns
@@ -161,19 +160,20 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
                 chunk[col] = chunk[col].fillna(0)
         chunk.to_csv(tmp_merged_file, mode="a", header=(i == 0), index=False)
 
-    os.remove(MERGED_DATASET_PATH)
-    os.rename(tmp_merged_file, MERGED_DATASET_PATH)
+    os.remove(merged_csv_path)
+    os.rename(tmp_merged_file, merged_csv_path)
     print(f"CSV dataset merge completed successfully! Total dropped lines: {total_dropped_lines}")
 
 
 if __name__ == "__main__":
-    torch.set_printoptions(threshold=100)
-    if os.path.exists(MERGED_DATASET_PATH):
-        dataset = CSVDataset(MERGED_DATASET_PATH, "Label", 2e+6)
-        dataset.load()
-        X = dataset.X
-        y = dataset.y
-        print(X.shape, X.dtype)
-        print(y.shape, y.dtype)
+    HELPTEXT = f"Usage: {sys.argv[0]} DATASET_FOLDER MERGED_DATASET_PATH LABEL_COLUMN BENIGN_LABEL"
+    if len(sys.argv) < 5:
+        print("Insufficient parameters. Exiting!", file=sys.stderr)
+        print(HELPTEXT)
+        sys.exit(1)
     else:
-        merge_cicflow_csvs(DATASET_FOLDER, MERGED_DATASET_PATH, label_column="Label", chunk_size=2e+6, bin_benign_label="Benign")
+        dataset_folder = sys.argv[1]
+        merged_dataset_path = sys.argv[2]
+        label_column = sys.argv[3]
+        benign_label = sys.argv[4]
+        merge_cicflow_csvs(dataset_folder, merged_dataset_path, label_column=label_column, chunk_size=2e+6, bin_benign_label=benign_label)

@@ -1,0 +1,40 @@
+CUDA available! GPU device name is: NVIDIA GeForce RTX 4060
+Chunk shape: (616448, 79) Datatypes: Src Port         float32
+Dst Port         float32
+Protocol         float32
+Flow Duration    float32
+Tot Fwd Pkts     float32
+                  ...   
+Active Min       float32
+Idle Mean        float32
+Idle Std         float32
+Idle Max         float32
+Idle Min         float32
+Length: 79, dtype: object
+# of rows: 616448, # of features: 79, # of classes: 2, datatype: torch.float32
+STARTING TRAINING SESSION!!!
+==================================================
+Epoch 1/5. Average accuracy: 97.225%, average loss: 0.08749, current loss: 0.05166.
+Saved model!
+==================================================
+Epoch 2/5. Average accuracy: 98.766%, average loss: 0.04341, current loss: 0.03855.
+Saved model!
+==================================================
+Epoch 3/5. Average accuracy: 98.933%, average loss: 0.03704, current loss: 0.03168.
+Saved model!
+==================================================
+Epoch 4/5. Average accuracy: 99.080%, average loss: 0.03197, current loss: 0.02511.
+Saved model!
+==================================================
+Epoch 5/5. Average accuracy: 99.199%, average loss: 0.02865, current loss: 0.02558.
+Saved model!
+TRAINING COMPLETE. STARTING TESTING SESSION!!!
+Testset accuracy: 99.186%, average loss: 0.0008609394531652152
+Accuracy per class:
+Attack: 98.92716979980469 %
+Benign: 99.43769836425781 %
+base values [ 8.06017   -7.1787763]
+features 79
+test values shape torch.Size([10, 79])
+shap 0 value shape (79, 2)
+shap 1 value shape (79, 2)
