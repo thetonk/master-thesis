@@ -156,6 +156,7 @@ Idle Max         float32
 Idle Min         float32
 Length: 79, dtype: object
 # of rows: 37394052, # of features: 79, # of classes: 2, datatype: torch.float32
+Training and testing model with a random split of 80% train and 20% test!
 STARTING TRAINING SESSION!!!
 ==================================================
 Epoch 1/5. Average accuracy: 95.275%, average loss: 0.09785, current loss: 0.10107.
@@ -174,9 +175,13 @@ Epoch 5/5. Average accuracy: 95.289%, average loss: 0.09717, current loss: 0.087
 Saved model!
 TRAINING COMPLETE. STARTING TESTING SESSION!!!
 Testset accuracy: 95.249%, average loss: 1.8193080537155646e-05
-Accuracy per class:
-Attack: 94.72460174560547 %
-Normal: 99.30211639404297 %
+Metrics:
+    Class  Accuracy  F1 Score
+0  Attack  0.947246  0.972458
+1  Normal  0.993021  0.827248
+Multiclass confusion matrix:
+[[6.272739e+06 3.493410e+05]
+ [5.979000e+03 8.507510e+05]]
 base values [ 14.682189 -14.107993]
 features 79
 test values shape torch.Size([10, 79])

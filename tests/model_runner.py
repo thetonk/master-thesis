@@ -1,6 +1,8 @@
 import sys
+import pandas as pd
+import numpy as np
 import torch
-from torcheval.metrics import MulticlassAccuracy
+from torcheval.metrics import MulticlassAccuracy, MulticlassF1Score, MulticlassConfusionMatrix
 from torch.utils.data import TensorDataset, DataLoader, Subset, random_split
 #import torchinfo
 from sklearn.model_selection import StratifiedKFold
@@ -48,7 +50,10 @@ if __name__ == "__main__":
     batch_size = 1500
     num_features = X.shape[1]
     num_classes = len(category_map)
-    metric = MulticlassAccuracy(average=None, num_classes=num_classes, device=DEVICE)
+    multilclass_accuracy_metric = MulticlassAccuracy(average=None, num_classes=num_classes, device=DEVICE)
+    multiclass_f1_metric = MulticlassF1Score(num_classes=num_classes, device=DEVICE, average=None)
+    multiclass_confusion_matrix_metric = MulticlassConfusionMatrix(num_classes=num_classes, device=DEVICE)
+    metrics = [multilclass_accuracy_metric, multiclass_f1_metric, multiclass_confusion_matrix_metric]
     print(f"# of rows: {X.shape[0]}, # of features: {num_features}, # of classes: {num_classes}, datatype: {X.dtype}")
     if folds == 0:
         print("Training and testing model with a random split of 80% train and 20% test!")
@@ -62,13 +67,14 @@ if __name__ == "__main__":
         print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
         final_model = MyModel(num_features, num_classes).to(DEVICE)
         final_model.load_state_dict(torch.load("trained_models/best_model.pt", weights_only=False))
-        multiclass_accuracy = test_model(final_model, test_loader, metric, device=DEVICE)
-        print("Accuracy per class:")
-        for i, class_accuracy in enumerate(multiclass_accuracy):
-            print(f"{category_map[i]}: {class_accuracy*100} %")
+        multiclass_accuracy, multiclass_f1_score, multiclass_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
+        metric_names = ["Class", "Accuracy", "F1 Score"]
+        metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [category_map.values(), multiclass_accuracy, multiclass_f1_score])))
+        print("Metrics:\n", metrics_df, sep='')
     else:
         strat_kfold = StratifiedKFold(n_splits=folds, shuffle=True, random_state=SEED)
         final_model = None
+        multiclass_confusion_matrix = np.zeros(shape=(num_classes, num_classes), dtype=np.uint64)
         for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
             model = MyModel(num_features, num_classes).to(DEVICE)
             print("-"*50)
@@ -82,16 +88,37 @@ if __name__ == "__main__":
             print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
             final_model = MyModel(num_features, num_classes).to(DEVICE)
             final_model.load_state_dict(torch.load("trained_models/best_model.pt", weights_only=False))
-            multiclass_accuracy = test_model(final_model, test_loader, metric)
-            print("Accuracy per class:")
-            for i, class_accuracy in enumerate(multiclass_accuracy):
-                print(f"{category_map[i]}: {class_accuracy*100} %")
+            multiclass_accuracy, multiclass_f1_score, fold_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
+            multiclass_confusion_matrix += fold_confusion_matrix.astype(np.uint64)
+            metric_names = ["Class", "Accuracy", "F1 Score"]
+            metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [category_map.values(), multiclass_accuracy, multiclass_f1_score])))
+            print("Metrics:\n", metrics_df, sep='')
             print("-"*50)
-        
+
+    print("Multiclass confusion matrix:\n", multiclass_confusion_matrix, sep='')
+    
+    # Plot confusion matrix
+    fig, axes = plt.subplots(dpi=500)
+    mat = axes.matshow(multiclass_confusion_matrix, cmap=plt.cm.Blues)
+    axes.set_title("Confusion matrix")
+    axes.set_xticks(range(num_classes), labels=category_map.values())
+    axes.set_yticks(range(num_classes), labels=category_map.values())
+    axes.set_ylabel("Actual")
+    axes.set_xlabel("Predicted")
+    axes.xaxis.set_ticks_position("bottom")
+    for i in range(num_classes):
+        for j in range(num_classes):
+            axes.text(j, i, multiclass_confusion_matrix[i, j], ha="center", va="center")
+    plt.colorbar(mat)
+    fig.tight_layout()
+    plt.savefig("confusion_matrix.png")
+    plt.close()
+
+    # Prepare and plot SHAP values
     final_model = final_model.to("cpu")
     shap_batch_loader = DataLoader(dataset, 110, shuffle=True)
     features, _ = next(iter(shap_batch_loader))
-    features = features.detach().cpu()
+    features = features.cpu()
     final_model.eval()
     background = features[:100]
     test_values = features[100:]
@@ -104,7 +131,7 @@ if __name__ == "__main__":
     print("test values shape", test_values.shape)
     charts_per_row = 2
     rows = num_classes // charts_per_row + ((num_classes % charts_per_row) != 0)
-    fig, axes = plt.subplots(rows, charts_per_row, dpi=300, figsize=(charts_per_row*4, rows*3), constrained_layout=True)
+    fig, axes = plt.subplots(rows, charts_per_row, dpi=500, figsize=(charts_per_row*4, rows*3))
     axes = axes.ravel()
     for i in range(num_classes):
         # Create Explanation object for class 0 (you can loop for others)
@@ -136,4 +163,6 @@ if __name__ == "__main__":
         fig.delaxes(axes[i])
 
     plt.tight_layout(pad=0.8)
-    plt.show()
+    plt.savefig("shap_values.png")
+    plt.close(fig)
+    

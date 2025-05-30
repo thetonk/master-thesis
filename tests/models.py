@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -121,12 +122,13 @@ def train_model(model: nn.Module, train_loader: DataLoader, loss_function = nn.C
             torch.save(model.state_dict(), "trained_models/best_model.pt")
 
 
-def test_model(model: nn.Module, test_loader: DataLoader, metric, loss_function = nn.CrossEntropyLoss(), device="cuda") -> torch.Tensor:
+def test_model(model: nn.Module, test_loader: DataLoader, metrics, loss_function = nn.CrossEntropyLoss(), device="cuda") -> list[np.ndarray]:
     model.eval()
     num_batches = len(test_loader)
     num_items = len(test_loader.dataset)
     test_loss = 0
     total_correct = 0
+    metric_results = []
     with torch.no_grad():
         for data, label in test_loader:
             data = data.to(device)
@@ -135,9 +137,12 @@ def test_model(model: nn.Module, test_loader: DataLoader, metric, loss_function 
             loss = loss_function(output, label)
             test_loss = loss.item()
             total_correct += _correct(output, label)
-            metric.update(output, label)
+            for metric in metrics:
+                metric.update(output, label)
     test_loss = test_loss/num_batches
     accuracy = total_correct/num_items
     print(f"Testset accuracy: {100*accuracy:.3f}%, average loss: {test_loss}")
-    return metric.compute()
+    for metric in metrics:
+        metric_results.append(metric.compute().cpu().numpy())
+    return metric_results
 
