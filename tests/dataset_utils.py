@@ -6,7 +6,7 @@ import torch
 import pandas as pd
 import numpy as np
 
-np.random.seed(42)
+#np.random.seed(42)
 
 FEATURE_COLUMNS = [
     "Src IP","Src Port","Dst IP","Dst Port","Protocol","Timestamp","Flow Duration","Tot Fwd Pkts","Tot Bwd Pkts","TotLen Fwd Pkts","TotLen Bwd Pkts",

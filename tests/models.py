@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import torch
 import torch.nn as nn
@@ -93,6 +94,7 @@ def train_model(model: nn.Module, train_loader: DataLoader, loss_function = nn.C
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     best_accuracy = 0
     save_model = False
+    start_time = int(time.time())
     for epoch in range(epochs):
         save_model = False
         model.train()
@@ -120,6 +122,8 @@ def train_model(model: nn.Module, train_loader: DataLoader, loss_function = nn.C
         if save_model:
             print("Saved model!")
             torch.save(model.state_dict(), "trained_models/best_model.pt")
+    stop_time = int(time.time())
+    print(f"Training took {stop_time - start_time} seconds.")
 
 
 def test_model(model: nn.Module, test_loader: DataLoader, metrics, loss_function = nn.CrossEntropyLoss(), device="cuda") -> list[np.ndarray]:
