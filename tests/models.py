@@ -35,7 +35,7 @@ class EncoderTransformer(nn.Module):
             nn.Linear(ff_neurons, embedding_dim)
         )
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         input = self.input_projection(x)
         x = self.normalization(input)
         x, _ = self.multihead_attention(x, x, x)
@@ -61,7 +61,7 @@ class MLPClassifier(nn.Module):
             nn.Linear(hidden_neurons, n_classes)
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         return self.layers(x)
     
 
@@ -82,8 +82,43 @@ class MyModel(nn.Module):
         self.layers = nn.Sequential(*layer_list)
 
 
-    def forward(self, x):
+    def forward(self, x: torch.tensor):
         return self.layers(x)
+
+
+class MyLSTMClassifier(nn.Module):
+    def __init__(self, n_classes: int, hidden_lstm_states: int = 256, hidden_mlp_neurons: int = 512, dropout: float = 0.1, device='cuda'):
+        super().__init__()
+        self.device = device
+        self.hidden_lstm_states = hidden_lstm_states
+        self.input_lstm = nn.LSTM(1, hidden_lstm_states, batch_first=True)
+        self.inner_lstm  = nn.LSTM(1, hidden_lstm_states // 2, batch_first=True)
+        self.dropout_layer = nn.Dropout(dropout)
+        self.mlp_classifier = nn.Sequential(
+            nn.Linear(hidden_lstm_states // 2, hidden_mlp_neurons),
+            nn.ReLU(),
+            nn.Linear(hidden_mlp_neurons, n_classes),
+        )
+
+
+    def forward(self, x: torch.Tensor):
+        x = x.unsqueeze(-1)
+        # initialize lstm states with noise, preferred from zero initialization
+        h0 = torch.randn(1, x.shape[0], self.hidden_lstm_states, device=self.device)
+        c0 = torch.randn(1, x.shape[0], self.hidden_lstm_states, device=self.device)
+        output, _ = self.input_lstm(x, (h0, c0))
+        # keep only the output of the last time step
+        output = output[:, -1, :].unsqueeze(-1)
+        # initialize lstm states with noise, preferred from zero initialization
+        h0 = torch.randn(1, output.shape[0], self.hidden_lstm_states // 2, device=self.device)
+        c0 = torch.randn(1, output.shape[0], self.hidden_lstm_states // 2, device=self.device)
+        output = self.dropout_layer(output)
+        output, _ = self.inner_lstm(output, (h0, c0))
+        # keep only the output of last time step
+        output = output[:, -1, :]
+        output = self.dropout_layer(output)
+        output = self.mlp_classifier(output)
+        return output
 
 
 def _correct(output: torch.Tensor, target: torch.Tensor):

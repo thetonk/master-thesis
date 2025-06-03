@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import shap
 from shap.plots import bar
 import dataset_utils
-from models import MyModel, train_model, test_model
+from models import MyModel, MyLSTMClassifier, train_model, test_model
 
 #SEED = 42
 
@@ -24,18 +24,21 @@ if __name__ == "__main__":
         print("CUDA is not available")
         DEVICE = "cpu"
 
-    HELPTEXT = f"Usage: {sys.argv[0]} DATASET_PATH LABEL_COLUMN N_FOLDS N_EPOCHS"
-
-    if len(sys.argv) < 5:
+    HELPTEXT = f"Usage: {sys.argv[0]} MODEL DATASET_PATH LABEL_COLUMN N_FOLDS N_EPOCHS\nAvailable options for MODEL are: 'lstm', 'transformer'."
+    use_transformer = True
+    if len(sys.argv) < 6:
         print("Error! You must specify label column name, number of folds and number of epochs. Exiting!", file=sys.stderr)
         print(HELPTEXT)
         sys.exit(1)
     else:
         try:
-            dataset_path = sys.argv[1]
-            label_column = sys.argv[2]
-            folds = int(sys.argv[3])
-            epochs = int(sys.argv[4])
+            model_name = sys.argv[1]
+            if model_name.lower() == "lstm":
+                use_transformer = False
+            dataset_path = sys.argv[2]
+            label_column = sys.argv[3]
+            folds = int(sys.argv[4])
+            epochs = int(sys.argv[5])
             dataset_name = os.path.basename(dataset_path).split(".")[0]
             if folds < 0 or epochs < 1:
                 raise ValueError
@@ -51,7 +54,7 @@ if __name__ == "__main__":
     csv_dataset.load()
     X, y, category_map, feature_names = csv_dataset.X, csv_dataset.y, csv_dataset.categories, csv_dataset.features
     dataset = TensorDataset(X, y)
-    batch_size = 1500
+    batch_size = 1024
     num_features = X.shape[1]
     num_classes = len(category_map)
     print(f"# of rows: {X.shape[0]}, # of features: {num_features}, # of classes: {num_classes}, datatype: {X.dtype}")
@@ -63,15 +66,21 @@ if __name__ == "__main__":
         multiclass_precision_metric = MulticlassPrecision(num_classes=num_classes, average=None, device=DEVICE)
         multiclass_recall_metric = MulticlassRecall(num_classes=num_classes, average=None, device=DEVICE)
         metrics = [multilclass_accuracy_metric, multiclass_precision_metric, multiclass_recall_metric, multiclass_f1_metric, multiclass_confusion_matrix_metric]
-        model = MyModel(num_features, num_classes).to(DEVICE)
+        if use_transformer:
+            model = MyModel(num_features, num_classes).to(DEVICE)
+        else:
+            model = MyLSTMClassifier(num_classes).to(DEVICE)
         #torchinfo.summary(model, (batch_size, num_features))
         train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
         train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6)
         test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6)
         print("STARTING TRAINING SESSION!!!")
-        train_model(model, model_filename, train_loader, epochs=epochs, device=DEVICE)
+        train_model(model, model_filename, train_loader, epochs=epochs, device=DEVICE, learning_rate=1e-4)
         print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
-        final_model = MyModel(num_features, num_classes).to(DEVICE)
+        if use_transformer:
+            final_model = MyModel(num_features, num_classes).to(DEVICE)
+        else:
+            final_model = MyLSTMClassifier(num_classes).to(DEVICE)
         final_model.load_state_dict(torch.load(model_filename, weights_only=False))
         multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
         metric_names = ["Class", "Accuracy", "Precision", "Recall", "F1 Score"]
@@ -88,7 +97,10 @@ if __name__ == "__main__":
             multiclass_precision_metric = MulticlassPrecision(num_classes=num_classes, average=None, device=DEVICE)
             multiclass_recall_metric = MulticlassRecall(num_classes=num_classes, average=None, device=DEVICE)
             metrics = [multilclass_accuracy_metric, multiclass_precision_metric, multiclass_recall_metric, multiclass_f1_metric, multiclass_confusion_matrix_metric]
-            model = MyModel(num_features, num_classes).to(DEVICE)
+            if use_transformer:
+                model = MyModel(num_features, num_classes).to(DEVICE)
+            else:
+                model = MyLSTMClassifier(num_classes).to(DEVICE)
             print("-"*50)
             print(f"Fold {fold+1}/{folds}")
             train_dataset = Subset(dataset, train_index)
@@ -96,9 +108,12 @@ if __name__ == "__main__":
             train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6)
             test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6)
             print("STARTING TRAINING SESSION!!!")
-            train_model(model, model_filename, train_loader, epochs=epochs)
+            train_model(model, model_filename, train_loader, epochs=epochs, learning_rate=1e-4)
             print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
-            final_model = MyModel(num_features, num_classes).to(DEVICE)
+            if use_transformer:
+                final_model = MyModel(num_features, num_classes).to(DEVICE)
+            else:
+                final_model = MyLSTMClassifier(num_classes).to(DEVICE)
             final_model.load_state_dict(torch.load(model_filename, weights_only=False))
             multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, fold_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
             multiclass_confusion_matrix += fold_confusion_matrix.astype(np.uint64)
@@ -128,6 +143,7 @@ if __name__ == "__main__":
 
     # Prepare and plot SHAP values
     final_model = final_model.to("cpu")
+    final_model.device = "cpu"
     shap_batch_loader = DataLoader(dataset, 110, shuffle=True)
     features, _ = next(iter(shap_batch_loader))
     features = features.cpu()
