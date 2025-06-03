@@ -22,7 +22,8 @@ from torch.utils.data import DataLoader
 
 
 class EncoderTransformer(nn.Module):
-    def __init__(self, feature_dim: int, embedding_dim:int = 128, num_heads:int = 8, dropout:float = 0.0, epsilon=1e-6, ff_neurons=256):
+    def __init__(self, feature_dim: int, embedding_dim:int = 128, num_heads:int = 8, 
+                 dropout:float = 0.0, epsilon=1e-6, ff_neurons=256):
         super().__init__()
         self.input_projection = nn.Linear(feature_dim, embedding_dim)
         self.multihead_attention = nn.MultiheadAttention(embed_dim=embedding_dim, num_heads=num_heads, dropout=dropout, batch_first=True)
@@ -90,7 +91,8 @@ def _correct(output: torch.Tensor, target: torch.Tensor):
     return (predicted == target).sum().item()
 
 
-def train_model(model: nn.Module, train_loader: DataLoader, loss_function = nn.CrossEntropyLoss(), epochs: int = 30, learning_rate: int = 1e-3, device="cuda"):
+def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader, loss_function = nn.CrossEntropyLoss(), 
+                epochs: int = 30, learning_rate: int = 1e-3, device="cuda"):
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     best_accuracy = 0
     save_model = False
@@ -121,7 +123,7 @@ def train_model(model: nn.Module, train_loader: DataLoader, loss_function = nn.C
         print(f"Epoch {epoch+1}/{epochs}. Average accuracy: {train_accuracy*100:.3f}%, average loss: {train_loss:.5f}, current loss: {loss:.5f}.")
         if save_model:
             print("Saved model!")
-            torch.save(model.state_dict(), "trained_models/best_model.pt")
+            torch.save(model.state_dict(), model_filename)
     stop_time = int(time.time())
     print(f"Training took {stop_time - start_time} seconds.")
 

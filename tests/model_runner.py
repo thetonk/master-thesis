@@ -1,4 +1,5 @@
 import sys
+import os
 import pandas as pd
 import numpy as np
 import torch
@@ -16,7 +17,6 @@ from models import MyModel, train_model, test_model
 
 if __name__ == "__main__":
     #torch.manual_seed(SEED)
-
     if torch.cuda.is_available():
         print("CUDA available! GPU device name is:", torch.cuda.get_device_name())
         DEVICE = "cuda"
@@ -36,8 +36,12 @@ if __name__ == "__main__":
             label_column = sys.argv[2]
             folds = int(sys.argv[3])
             epochs = int(sys.argv[4])
+            dataset_name = os.path.basename(dataset_path).split(".")[0]
             if folds < 0 or epochs < 1:
                 raise ValueError
+            os.makedirs("trained_models", exist_ok=True)
+            os.makedirs("images", exist_ok=True)
+            model_filename = os.path.join("trained_models", f"best_model_{dataset_name}.pt")
         except ValueError:
             print("Please specify valid number of folds and epochs", file=sys.stderr)
             print(HELPTEXT)
@@ -65,10 +69,10 @@ if __name__ == "__main__":
         train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6)
         test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6)
         print("STARTING TRAINING SESSION!!!")
-        train_model(model, train_loader, epochs=epochs, device=DEVICE)
+        train_model(model, model_filename, train_loader, epochs=epochs, device=DEVICE)
         print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
         final_model = MyModel(num_features, num_classes).to(DEVICE)
-        final_model.load_state_dict(torch.load("trained_models/best_model.pt", weights_only=False))
+        final_model.load_state_dict(torch.load(model_filename, weights_only=False))
         multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
         metric_names = ["Class", "Accuracy", "Precision", "Recall", "F1 Score"]
         metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [category_map.values(), multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score])))
@@ -92,10 +96,10 @@ if __name__ == "__main__":
             train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6)
             test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6)
             print("STARTING TRAINING SESSION!!!")
-            train_model(model, train_loader, epochs=epochs)
+            train_model(model, model_filename, train_loader, epochs=epochs)
             print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
             final_model = MyModel(num_features, num_classes).to(DEVICE)
-            final_model.load_state_dict(torch.load("trained_models/best_model.pt", weights_only=False))
+            final_model.load_state_dict(torch.load(model_filename, weights_only=False))
             multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, fold_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
             multiclass_confusion_matrix += fold_confusion_matrix.astype(np.uint64)
             metric_names = ["Class", "Accuracy", "Precision", "Recall", "F1 Score"]
@@ -119,7 +123,7 @@ if __name__ == "__main__":
             axes.text(j, i, multiclass_confusion_matrix[i, j], ha="center", va="center")
     plt.colorbar(mat)
     fig.tight_layout()
-    plt.savefig("confusion_matrix.png")
+    plt.savefig(os.path.join("images", f"confusion_matrix_{dataset_name}.png"))
     plt.close()
 
     # Prepare and plot SHAP values
@@ -171,5 +175,5 @@ if __name__ == "__main__":
         fig.delaxes(axes[i])
 
     plt.tight_layout(pad=0.8)
-    plt.savefig("shap_values.png")
+    plt.savefig(os.path.join("images", f"shap_values_{dataset_name}.png"))
     plt.close(fig)
