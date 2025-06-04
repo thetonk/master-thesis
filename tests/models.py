@@ -128,6 +128,7 @@ def _correct(output: torch.Tensor, target: torch.Tensor):
 
 def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader, loss_function = nn.CrossEntropyLoss(), 
                 epochs: int = 30, learning_rate: int = 1e-3, device="cuda"):
+    #torch.autograd.set_detect_anomaly(True)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     best_accuracy = 0
     save_model = False

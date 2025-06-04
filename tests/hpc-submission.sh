@@ -18,7 +18,8 @@ module load gcc/13.2.0 python/3.11 cuda/12.4.0
 cd ~/thesis-task
 source .venv/bin/activate
 
-dataset="$1"
-label_column="$2"
+model="$1"
+dataset="$2"
+label_column="$3"
 
-python3 model_runner.py "$dataset" "$label_column" 10 5
+python3 model_runner.py "$model" "$dataset" "$label_column" 10 5

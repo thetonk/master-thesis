@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torcheval.metrics import MulticlassAccuracy, MulticlassF1Score, MulticlassConfusionMatrix, MulticlassPrecision, MulticlassRecall
 from torch.utils.data import TensorDataset, DataLoader, Subset, random_split
-#import torchinfo
+import torchinfo
 from sklearn.model_selection import StratifiedKFold
 import matplotlib.pyplot as plt
 import shap
@@ -70,7 +70,7 @@ if __name__ == "__main__":
             model = MyModel(num_features, num_classes).to(DEVICE)
         else:
             model = MyLSTMClassifier(num_classes).to(DEVICE)
-        #torchinfo.summary(model, (batch_size, num_features))
+        torchinfo.summary(model, input_size=(batch_size, num_features))
         train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
         train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6)
         test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6)
@@ -89,6 +89,7 @@ if __name__ == "__main__":
     else:
         strat_kfold = StratifiedKFold(n_splits=folds, shuffle=True)
         final_model = None
+        show_summary = True
         multiclass_confusion_matrix = np.zeros(shape=(num_classes, num_classes), dtype=np.uint64)
         for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
             multilclass_accuracy_metric = MulticlassAccuracy(average=None, num_classes=num_classes, device=DEVICE)
@@ -101,6 +102,9 @@ if __name__ == "__main__":
                 model = MyModel(num_features, num_classes).to(DEVICE)
             else:
                 model = MyLSTMClassifier(num_classes).to(DEVICE)
+            if show_summary:
+                torchinfo.summary(model, input_size=(batch_size, num_features))
+                show_summary = False
             print("-"*50)
             print(f"Fold {fold+1}/{folds}")
             train_dataset = Subset(dataset, train_index)
@@ -108,7 +112,7 @@ if __name__ == "__main__":
             train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6)
             test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6)
             print("STARTING TRAINING SESSION!!!")
-            train_model(model, model_filename, train_loader, epochs=epochs, learning_rate=1e-4)
+            train_model(model, model_filename, train_loader, epochs=epochs, device=DEVICE, learning_rate=1e-4)
             print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
             if use_transformer:
                 final_model = MyModel(num_features, num_classes).to(DEVICE)
