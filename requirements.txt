@@ -10,3 +10,4 @@ torcheval
 scikit-learn
 shap
 scipy
+imbalanced-learn

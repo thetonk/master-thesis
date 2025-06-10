@@ -3,6 +3,7 @@ import sys
 import ipaddress
 import multiprocessing
 import torch
+from sklearn.model_selection import StratifiedShuffleSplit
 import pandas as pd
 import numpy as np
 
@@ -60,13 +61,17 @@ class CSVDataset():
     
     def load(self):
         label_column = self._label_column
+        rows_limit = int(2e+6)
         with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
             tensors = pool.map(CSVDataset._chunk_to_tensor, CSVDataset._read_csv_in_chunks(self.dataset_path, self._columns_to_drop, chunk_size=self._chunk_size))
         x_tensor = torch.cat(tensors, dim=0).float()
         y_df = pd.read_csv(self.dataset_path, delimiter=",", usecols=[label_column], dtype={label_column: "category"})
         y_tensor = torch.tensor(y_df[label_column].cat.codes.to_numpy(), dtype=torch.int64)
-        self.X = x_tensor
-        self.y = y_tensor
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=rows_limit)
+        _, indexes = next(sss.split(x_tensor, y_tensor))
+        self.X = x_tensor[indexes]
+        self.y = y_tensor[indexes]
+        del x_tensor, y_tensor
         self.categories = dict(enumerate(y_df[label_column].cat.categories))
 
 
@@ -161,8 +166,10 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
         chunk.to_csv(tmp_merged_file, mode="a", header=(i == 0), index=False)
 
     os.remove(merged_csv_path)
-    os.rename(tmp_merged_file, merged_csv_path)
-    print(f"CSV dataset merge completed successfully! Total dropped lines: {total_dropped_lines}")
+    print("Removing duplicates, please wait...")
+    os.system(f"awk '!a[$0]++' '{tmp_merged_file}' > '{merged_csv_path}'")
+    os.remove(tmp_merged_file)
+    print(f"CSV dataset merge completed successfully!")
 
 
 if __name__ == "__main__":

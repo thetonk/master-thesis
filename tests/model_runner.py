@@ -24,21 +24,24 @@ if __name__ == "__main__":
         print("CUDA is not available")
         DEVICE = "cpu"
 
-    HELPTEXT = f"Usage: {sys.argv[0]} MODEL DATASET_PATH LABEL_COLUMN N_FOLDS N_EPOCHS\nAvailable options for MODEL are: 'lstm', 'transformer'."
+    HELPTEXT = f"Usage: {sys.argv[0]} MODEL DATASET_PATH LABEL_COLUMN N_RUNS N_FOLDS N_EPOCHS\nAvailable options for MODEL are: 'lstm', 'transformer'."
     use_transformer = True
-    if len(sys.argv) < 6:
+    if len(sys.argv) < 7:
         print("Error! You must specify label column name, number of folds and number of epochs. Exiting!", file=sys.stderr)
         print(HELPTEXT)
         sys.exit(1)
     else:
         try:
             model_name = sys.argv[1]
+            learning_rate = 1e-3
             if model_name.lower() == "lstm":
                 use_transformer = False
+                learning_rate = 1e-4
             dataset_path = sys.argv[2]
             label_column = sys.argv[3]
-            folds = int(sys.argv[4])
-            epochs = int(sys.argv[5])
+            num_runs = int(sys.argv[4])
+            folds = int(sys.argv[5])
+            epochs = int(sys.argv[6])
             dataset_name = os.path.basename(dataset_path).split(".")[0]
             if folds < 0 or epochs < 1:
                 raise ValueError
@@ -53,45 +56,20 @@ if __name__ == "__main__":
     csv_dataset = dataset_utils.CSVDataset(dataset_path, label_column, chunk_size=3e+6)
     csv_dataset.load()
     X, y, category_map, feature_names = csv_dataset.X, csv_dataset.y, csv_dataset.categories, csv_dataset.features
-    dataset = TensorDataset(X, y)
-    batch_size = 1024
-    num_features = X.shape[1]
     num_classes = len(category_map)
+    class_frequencies = y.bincount(minlength=num_classes)
+    class_percentages = class_frequencies.float() / y.shape[0]
+    print("Class percentages:", class_percentages)
+    dataset = TensorDataset(X, y)
+    batch_size = 256
+    num_features = X.shape[1]
     print(f"# of rows: {X.shape[0]}, # of features: {num_features}, # of classes: {num_classes}, datatype: {X.dtype}")
-    if folds == 0:
-        print("Training and testing model with a random split of 80% train and 20% test!")
-        multilclass_accuracy_metric = MulticlassAccuracy(average=None, num_classes=num_classes, device=DEVICE)
-        multiclass_f1_metric = MulticlassF1Score(num_classes=num_classes, device=DEVICE, average=None)
-        multiclass_confusion_matrix_metric = MulticlassConfusionMatrix(num_classes=num_classes, device=DEVICE)
-        multiclass_precision_metric = MulticlassPrecision(num_classes=num_classes, average=None, device=DEVICE)
-        multiclass_recall_metric = MulticlassRecall(num_classes=num_classes, average=None, device=DEVICE)
-        metrics = [multilclass_accuracy_metric, multiclass_precision_metric, multiclass_recall_metric, multiclass_f1_metric, multiclass_confusion_matrix_metric]
-        if use_transformer:
-            model = MyModel(num_features, num_classes).to(DEVICE)
-        else:
-            model = MyLSTMClassifier(num_classes).to(DEVICE)
-        torchinfo.summary(model, input_size=(batch_size, num_features))
-        train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
-        train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6)
-        test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6)
-        print("STARTING TRAINING SESSION!!!")
-        train_model(model, model_filename, train_loader, epochs=epochs, device=DEVICE, learning_rate=1e-4)
-        print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
-        if use_transformer:
-            final_model = MyModel(num_features, num_classes).to(DEVICE)
-        else:
-            final_model = MyLSTMClassifier(num_classes).to(DEVICE)
-        final_model.load_state_dict(torch.load(model_filename, weights_only=False))
-        multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
-        metric_names = ["Class", "Accuracy", "Precision", "Recall", "F1 Score"]
-        metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [category_map.values(), multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score])))
-        print("Metrics:\n", metrics_df, sep='')
-    else:
-        strat_kfold = StratifiedKFold(n_splits=folds, shuffle=True)
-        final_model = None
-        show_summary = True
-        multiclass_confusion_matrix = np.zeros(shape=(num_classes, num_classes), dtype=np.uint64)
-        for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
+    metric_names = ["Run #","Fold #","Class", "Accuracy", "Precision", "Recall", "F1 Score"]
+    df_list = []
+    for i in range(num_runs):
+        print("#"*50,f"RUN {i}", "#"*50)
+        if folds == 0:
+            print("Training and testing model with a random split of 80% train and 20% test!")
             multilclass_accuracy_metric = MulticlassAccuracy(average=None, num_classes=num_classes, device=DEVICE)
             multiclass_f1_metric = MulticlassF1Score(num_classes=num_classes, device=DEVICE, average=None)
             multiclass_confusion_matrix_metric = MulticlassConfusionMatrix(num_classes=num_classes, device=DEVICE)
@@ -102,33 +80,86 @@ if __name__ == "__main__":
                 model = MyModel(num_features, num_classes).to(DEVICE)
             else:
                 model = MyLSTMClassifier(num_classes).to(DEVICE)
-            if show_summary:
-                torchinfo.summary(model, input_size=(batch_size, num_features))
-                show_summary = False
-            print("-"*50)
-            print(f"Fold {fold+1}/{folds}")
-            train_dataset = Subset(dataset, train_index)
-            test_dataset = Subset(dataset, test_index)
+            torchinfo.summary(model, input_size=(batch_size, num_features))
+            train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
+            #if use_undersampler:
+            #    undersampler = SMOTETomek(n_jobs=-1)
+            #    X_train = X[train_dataset.indices]
+            #    y_train = y[train_dataset.indices]
+            #    X_train, y_train = undersampler.fit_resample(X_train.numpy(), y_train.numpy())
+            #    X_train = torch.tensor(X_train, dtype=torch.float32)
+            #    y_train = torch.tensor(y_train, dtype=torch.int64)
+            #    train_dataset = TensorDataset(X_train, y_train)
+            #    del X_train, y_train
             train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6)
             test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6)
             print("STARTING TRAINING SESSION!!!")
-            train_model(model, model_filename, train_loader, epochs=epochs, device=DEVICE, learning_rate=1e-4)
+            train_model(model, model_filename, train_loader, epochs=epochs, device=DEVICE, learning_rate=learning_rate)
             print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
             if use_transformer:
                 final_model = MyModel(num_features, num_classes).to(DEVICE)
             else:
                 final_model = MyLSTMClassifier(num_classes).to(DEVICE)
             final_model.load_state_dict(torch.load(model_filename, weights_only=False))
-            multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, fold_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
-            multiclass_confusion_matrix += fold_confusion_matrix.astype(np.uint64)
-            metric_names = ["Class", "Accuracy", "Precision", "Recall", "F1 Score"]
-            metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [category_map.values(), multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score])))
+            multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
+            metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1]*num_classes, [1]*num_classes, category_map.values(), multiclass_accuracy, 
+                                                                        multiclass_precision, multiclass_recall, multiclass_f1_score])))
+            df_list.append(metrics_df)
             print("Metrics:\n", metrics_df, sep='')
-            print("-"*50)
 
-    print("Multiclass confusion matrix:\n", multiclass_confusion_matrix, sep='')
+        else:
+            strat_kfold = StratifiedKFold(n_splits=folds, shuffle=True)
+            final_model = None
+            show_summary = True
+            multiclass_confusion_matrix = np.zeros(shape=(num_classes, num_classes), dtype=np.uint64)
+            for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
+                multilclass_accuracy_metric = MulticlassAccuracy(average=None, num_classes=num_classes, device=DEVICE)
+                multiclass_f1_metric = MulticlassF1Score(num_classes=num_classes, device=DEVICE, average=None)
+                multiclass_confusion_matrix_metric = MulticlassConfusionMatrix(num_classes=num_classes, device=DEVICE)
+                multiclass_precision_metric = MulticlassPrecision(num_classes=num_classes, average=None, device=DEVICE)
+                multiclass_recall_metric = MulticlassRecall(num_classes=num_classes, average=None, device=DEVICE)
+                metrics = [multilclass_accuracy_metric, multiclass_precision_metric, multiclass_recall_metric, multiclass_f1_metric, multiclass_confusion_matrix_metric]
+                if use_transformer:
+                    model = MyModel(num_features, num_classes).to(DEVICE)
+                else:
+                    model = MyLSTMClassifier(num_classes).to(DEVICE)
+                if show_summary:
+                    torchinfo.summary(model, input_size=(batch_size, num_features))
+                    show_summary = False
+                print("-"*50)
+                print(f"Fold {fold+1}/{folds}")
+                #if use_undersampler:
+                    #undersampler = RandomUnderSampler()
+                    #X_train = X[train_index]
+                    #y_train = y[train_index]
+                    #X_train, y_train = undersampler.fit_resample(X_train.numpy(), y_train.numpy())
+                    #X_train = torch.tensor(X_train, dtype=torch.float32)
+                    #y_train = torch.tensor(y_train, dtype=torch.int64)
+                    #train_dataset = TensorDataset(X_train, y_train)
+                    #del X_train, y_train
+                #else:
+                train_dataset = Subset(dataset, train_index)
+                test_dataset = Subset(dataset, test_index)
+                train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6)
+                test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6)
+                print("STARTING TRAINING SESSION!!!")
+                train_model(model, model_filename, train_loader, epochs=epochs, device=DEVICE, learning_rate=learning_rate)
+                print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
+                if use_transformer:
+                    final_model = MyModel(num_features, num_classes).to(DEVICE)
+                else:
+                    final_model = MyLSTMClassifier(num_classes).to(DEVICE)
+                final_model.load_state_dict(torch.load(model_filename, weights_only=False))
+                multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, fold_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
+                multiclass_confusion_matrix += fold_confusion_matrix.astype(np.uint64)
+                metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1]*num_classes, [fold+1]*num_classes, category_map.values(), multiclass_accuracy, 
+                                                                            multiclass_precision, multiclass_recall, multiclass_f1_score])))
+                df_list.append(metrics_df)
+                print("Metrics:\n", metrics_df, sep='')
+                print("-"*50)
+        print(f"[Run {i+1}] Multiclass confusion matrix:\n", multiclass_confusion_matrix, sep='')
     
-    # Plot confusion matrix
+    # Plot last confusion matrix
     fig, axes = plt.subplots(dpi=500)
     mat = axes.matshow(multiclass_confusion_matrix, cmap=plt.cm.Blues)
     axes.set_title("Confusion matrix")
@@ -145,7 +176,7 @@ if __name__ == "__main__":
     plt.savefig(os.path.join("images", f"confusion_matrix_{dataset_name}.png"))
     plt.close()
 
-    # Prepare and plot SHAP values
+    # Prepare and plot last SHAP values
     final_model = final_model.to("cpu")
     final_model.device = "cpu"
     shap_batch_loader = DataLoader(dataset, 110, shuffle=True)
@@ -197,3 +228,5 @@ if __name__ == "__main__":
     plt.tight_layout(pad=0.8)
     plt.savefig(os.path.join("images", f"shap_values_{dataset_name}.png"))
     plt.close(fig)
+    results_df = pd.concat(df_list)
+    results_df.to_csv(f"results_{dataset_name}.csv")
