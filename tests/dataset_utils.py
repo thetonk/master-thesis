@@ -61,16 +61,20 @@ class CSVDataset():
     
     def load(self):
         label_column = self._label_column
-        rows_limit = int(2e+6)
         with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
             tensors = pool.map(CSVDataset._chunk_to_tensor, CSVDataset._read_csv_in_chunks(self.dataset_path, self._columns_to_drop, chunk_size=self._chunk_size))
         x_tensor = torch.cat(tensors, dim=0).float()
         y_df = pd.read_csv(self.dataset_path, delimiter=",", usecols=[label_column], dtype={label_column: "category"})
         y_tensor = torch.tensor(y_df[label_column].cat.codes.to_numpy(), dtype=torch.int64)
-        sss = StratifiedShuffleSplit(n_splits=1, test_size=rows_limit)
-        _, indexes = next(sss.split(x_tensor, y_tensor))
-        self.X = x_tensor[indexes]
-        self.y = y_tensor[indexes]
+        rows_limit = int(500e+3)
+        if x_tensor.shape[0] > rows_limit:
+            sss = StratifiedShuffleSplit(n_splits=1, test_size=rows_limit)
+            _, indexes = next(sss.split(x_tensor, y_tensor))
+            self.X = x_tensor[indexes]
+            self.y = y_tensor[indexes]
+        else:
+            self.X = x_tensor
+            self.y = y_tensor
         del x_tensor, y_tensor
         self.categories = dict(enumerate(y_df[label_column].cat.categories))
 
@@ -123,8 +127,12 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
 
                     chunk[label_column] = chunk[label_column].astype(object)
                     # Convert IP addresses to numbers
-                    chunk["Src IP"] = chunk["Src IP"].apply(lambda ip: int(ipaddress.ip_address(ip)))
-                    chunk["Dst IP"] = chunk["Dst IP"].apply(lambda ip: int(ipaddress.ip_address(ip)))
+                    try:
+                        chunk["Src IP"] = chunk["Src IP"].apply(lambda ip: int(ipaddress.ip_address(ip)))
+                        chunk["Dst IP"] = chunk["Dst IP"].apply(lambda ip: int(ipaddress.ip_address(ip)))
+                    except ValueError:
+                        chunk["Src IP"] = chunk["Src IP"].astype(int)
+                        chunk["Dst IP"] = chunk["Src IP"].astype(int)
                     chunk = chunk.reindex(columns=dataset_columns)
 
                     # Convert numeric data to corresponding numeric pandas datatype

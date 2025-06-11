@@ -22,4 +22,4 @@ model="$1"
 dataset="$2"
 label_column="$3"
 
-python3 model_runner.py "$model" "$dataset" "$label_column" 10 5
+python3 model_runner.py "$model" "$dataset" "$label_column" 10 10 5
