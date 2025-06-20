@@ -54,7 +54,7 @@ if __name__ == "__main__":
             sys.exit(1)
 
     csv_dataset = dataset_utils.CSVDataset(dataset_path, label_column, chunk_size=3e+6)
-    csv_dataset.load()
+    csv_dataset.load(balance_classes=True)
     X, y, category_map, feature_names = csv_dataset.X, csv_dataset.y, csv_dataset.categories, csv_dataset.features
     num_classes = len(category_map)
     class_frequencies = y.bincount(minlength=num_classes)

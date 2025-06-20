@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from ray import tune
 
 # CODE TO CHECK ON TRAINER, FOR TRAINING SPEED BOOST. WORKS ON AMPERE GPU DEVICES OR NEWER
 # scaler = torch.cuda.amp.GradScaler()
@@ -66,19 +67,20 @@ class MLPClassifier(nn.Module):
     
 
 class MyModel(nn.Module):
-    def __init__(self, num_features: int, num_classes: int, num_encoders:int = 1, num_mlps:int = 1):
+    def __init__(self, num_features: int, num_classes: int, num_encoders:int = 1, num_mlps:int = 1,
+                 enc_embedding_dim:int = 128, enc_n_heads:int = 8, enc_ff_neurons:int = 256, mlp_hidden_neurons:int = 512):
         super().__init__()
         layer_list = []
         for i in range(num_encoders):
             if i == 0:
-                layer_list.append(EncoderTransformer(num_features))
+                layer_list.append(EncoderTransformer(num_features, enc_embedding_dim, num_heads=enc_n_heads, ff_neurons=enc_ff_neurons))
             else:
-                layer_list.append(EncoderTransformer(128))
+                layer_list.append(EncoderTransformer(enc_embedding_dim, enc_embedding_dim, num_heads=enc_n_heads, ff_neurons=enc_ff_neurons))
         for i in range(num_mlps):
             if i == num_mlps - 1:
-                layer_list.append(MLPClassifier(128, num_classes, hidden_neurons=512))
+                layer_list.append(MLPClassifier(enc_embedding_dim, num_classes, hidden_neurons=mlp_hidden_neurons))
             else:
-                layer_list.append(MLPClassifier(128, 128, hidden_neurons=512))
+                layer_list.append(MLPClassifier(enc_embedding_dim, enc_embedding_dim, hidden_neurons=mlp_hidden_neurons))
         self.layers = nn.Sequential(*layer_list)
 
 
@@ -127,7 +129,7 @@ def _correct(output: torch.Tensor, target: torch.Tensor):
 
 
 def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader, loss_function = nn.CrossEntropyLoss(), 
-                epochs: int = 30, learning_rate: int = 1e-3, device="cuda"):
+                epochs: int = 30, learning_rate: int = 1e-3, device="cuda", train_tune=False):
     #torch.autograd.set_detect_anomaly(True)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     best_accuracy = 0
@@ -157,6 +159,8 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
             save_model = True
         print("="*50)
         print(f"Epoch {epoch+1}/{epochs}. Average accuracy: {train_accuracy*100:.3f}%, average loss: {train_loss:.5f}, current loss: {loss:.5f}.")
+        if train_tune:
+            tune.report({"mean_accuracy": train_accuracy})
         if save_model:
             print("Saved model!")
             torch.save(model.state_dict(), model_filename)

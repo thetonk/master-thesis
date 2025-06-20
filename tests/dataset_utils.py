@@ -1,4 +1,5 @@
 import os
+import random
 import sys
 import ipaddress
 import multiprocessing
@@ -59,24 +60,37 @@ class CSVDataset():
     def _chunk_to_tensor(chunk: pd.DataFrame) -> torch.Tensor:
         return torch.tensor(chunk.to_numpy())
     
-    def load(self):
+    def load(self, balance_classes=True):
         label_column = self._label_column
         with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
             tensors = pool.map(CSVDataset._chunk_to_tensor, CSVDataset._read_csv_in_chunks(self.dataset_path, self._columns_to_drop, chunk_size=self._chunk_size))
         x_tensor = torch.cat(tensors, dim=0).float()
         y_df = pd.read_csv(self.dataset_path, delimiter=",", usecols=[label_column], dtype={label_column: "category"})
-        y_tensor = torch.tensor(y_df[label_column].cat.codes.to_numpy(), dtype=torch.int64)
+        labels = y_df[label_column]
+        del y_df
+        y_tensor = torch.tensor(labels.cat.codes.to_numpy(), dtype=torch.int64)
         rows_limit = int(500e+3)
-        if x_tensor.shape[0] > rows_limit:
-            sss = StratifiedShuffleSplit(n_splits=1, test_size=rows_limit)
-            _, indexes = next(sss.split(x_tensor, y_tensor))
+        if balance_classes:
+            minimum_class_samples = labels.cat.codes.value_counts().min()
+            rows_limit = min(minimum_class_samples, int(200e+3))
+            indexes = []
+            for category in labels.cat.categories:
+                indexes += labels.index[labels == category].to_series().sample(n=rows_limit).to_list()
+            # shuffle indexes to mix samples of each class
+            random.shuffle(indexes)
             self.X = x_tensor[indexes]
             self.y = y_tensor[indexes]
         else:
-            self.X = x_tensor
-            self.y = y_tensor
+            if x_tensor.shape[0] > rows_limit:
+                sss = StratifiedShuffleSplit(n_splits=1, test_size=rows_limit)
+                _, indexes = next(sss.split(x_tensor, y_tensor))
+                self.X = x_tensor[indexes]
+                self.y = y_tensor[indexes]
+            else:
+                self.X = x_tensor
+                self.y = y_tensor
         del x_tensor, y_tensor
-        self.categories = dict(enumerate(y_df[label_column].cat.categories))
+        self.categories = dict(enumerate(labels.cat.categories))
 
 
 def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", chunk_size=1e+6, bin_benign_label=None):

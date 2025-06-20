@@ -11,3 +11,4 @@ scikit-learn
 shap
 scipy
 imbalanced-learn
+ray[tune]
