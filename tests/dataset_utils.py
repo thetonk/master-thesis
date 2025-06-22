@@ -1,8 +1,7 @@
 import os
-import random
+#import random
 import sys
 import ipaddress
-import multiprocessing
 import torch
 from sklearn.model_selection import StratifiedShuffleSplit
 import pandas as pd
@@ -60,24 +59,28 @@ class CSVDataset():
     def _chunk_to_tensor(chunk: pd.DataFrame) -> torch.Tensor:
         return torch.tensor(chunk.to_numpy())
     
-    def load(self, balance_classes=True):
+    def load(self, balance_classes=True, rows_limit=500e+3):
+        rows_limit = int(rows_limit)
         label_column = self._label_column
-        with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-            tensors = pool.map(CSVDataset._chunk_to_tensor, CSVDataset._read_csv_in_chunks(self.dataset_path, self._columns_to_drop, chunk_size=self._chunk_size))
+        tensors = []
+        for chunk in CSVDataset._read_csv_in_chunks(self.dataset_path, self._columns_to_drop, chunk_size=self._chunk_size):
+            tensors.append(CSVDataset._chunk_to_tensor(chunk))
         x_tensor = torch.cat(tensors, dim=0).float()
         y_df = pd.read_csv(self.dataset_path, delimiter=",", usecols=[label_column], dtype={label_column: "category"})
         labels = y_df[label_column]
         del y_df
         y_tensor = torch.tensor(labels.cat.codes.to_numpy(), dtype=torch.int64)
-        rows_limit = int(500e+3)
         if balance_classes:
+            num_classes = len(labels.cat.categories)
             minimum_class_samples = labels.cat.codes.value_counts().min()
-            rows_limit = min(minimum_class_samples, int(200e+3))
+            rows_limit_per_class = min(minimum_class_samples, int(rows_limit / num_classes))
+            if rows_limit_per_class < (rows_limit / num_classes):
+                print(f"Warning: dataset {self.dataset_path} has less samples than the required! Has: {minimum_class_samples} samples!", file=sys.stderr)
             indexes = []
             for category in labels.cat.categories:
-                indexes += labels.index[labels == category].to_series().sample(n=rows_limit).to_list()
+                indexes += labels.index[labels == category].to_series().sample(n=rows_limit_per_class).to_list()
             # shuffle indexes to mix samples of each class
-            random.shuffle(indexes)
+            #random.shuffle(indexes)
             self.X = x_tensor[indexes]
             self.y = y_tensor[indexes]
         else:
@@ -121,9 +124,10 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
                     if bin_benign_label is not None:
                         print("Replacing non benign traffic labels to 'Attack' label!")
                         chunk.loc[chunk[label_column] != bin_benign_label, label_column] = "Attack"
-
+                    
+                    chunk[label_column] = chunk[label_column].replace({"Benign": "Normal"})
                     # drop rows with dst port and protocol equal to 0
-                    bad_rows = chunk[(chunk['Protocol'] == 0) & (chunk['Dst Port'] == 0) & (chunk[label_column].isin(["Benign", "Normal"]))]
+                    bad_rows = chunk[(chunk['Protocol'] == 0) & (chunk['Dst Port'] == 0) & (chunk[label_column] == "Normal")]
                     if not bad_rows.empty:
                         bad_row_count = len(bad_rows)
                         total_dropped_lines += bad_row_count
@@ -164,6 +168,8 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
                     else:
                         sums += chunk_sums
                         counts += chunk_counts
+                    if label_column != "Label":
+                        chunk = chunk.rename(columns={label_column: "Label"})
                     if not header_inserted:
                         chunk.to_csv(merged_csv_path, index=False, header=True, mode="w")
                         header_inserted = True
@@ -174,6 +180,8 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
     print("="*40,"SECOND PASS, REPLACING NaN VALUES WITH MEANS","="*40)
     tmp_merged_file = merged_csv_path+".tmp"
     means = sums / counts
+    dataset_columns[-1] = "Label"
+    label_column = "Label"
     for i,chunk in enumerate(pd.read_csv(merged_csv_path, delimiter=",", chunksize=chunk_size)):
         # Convert numeric data to corresponding numeric pandas datatype
         chunk = _prepare_numeric_columns(chunk, label_column=label_column)

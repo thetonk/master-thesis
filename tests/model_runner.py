@@ -66,6 +66,7 @@ if __name__ == "__main__":
     print(f"# of rows: {X.shape[0]}, # of features: {num_features}, # of classes: {num_classes}, datatype: {X.dtype}")
     metric_names = ["Run #","Fold #","Class", "Accuracy", "Precision", "Recall", "F1 Score"]
     df_list = []
+    training_metric = MulticlassAccuracy(average='macro', num_classes=num_classes, device=DEVICE)
     for i in range(num_runs):
         print("#"*50,f"RUN {i}", "#"*50)
         if folds == 0:
@@ -82,19 +83,10 @@ if __name__ == "__main__":
                 model = MyLSTMClassifier(num_classes).to(DEVICE)
             torchinfo.summary(model, input_size=(batch_size, num_features))
             train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
-            #if use_undersampler:
-            #    undersampler = SMOTETomek(n_jobs=-1)
-            #    X_train = X[train_dataset.indices]
-            #    y_train = y[train_dataset.indices]
-            #    X_train, y_train = undersampler.fit_resample(X_train.numpy(), y_train.numpy())
-            #    X_train = torch.tensor(X_train, dtype=torch.float32)
-            #    y_train = torch.tensor(y_train, dtype=torch.int64)
-            #    train_dataset = TensorDataset(X_train, y_train)
-            #    del X_train, y_train
-            train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6)
-            test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6)
+            train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6, persistent_workers=True)
+            test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6, persistent_workers=True)
             print("STARTING TRAINING SESSION!!!")
-            train_model(model, model_filename, train_loader, epochs=epochs, device=DEVICE, learning_rate=learning_rate)
+            train_model(model, model_filename, train_loader, training_metric, epochs=epochs, device=DEVICE, learning_rate=learning_rate)
             print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
             if use_transformer:
                 final_model = MyModel(num_features, num_classes).to(DEVICE)
@@ -128,22 +120,12 @@ if __name__ == "__main__":
                     show_summary = False
                 print("-"*50)
                 print(f"Fold {fold+1}/{folds}")
-                #if use_undersampler:
-                    #undersampler = RandomUnderSampler()
-                    #X_train = X[train_index]
-                    #y_train = y[train_index]
-                    #X_train, y_train = undersampler.fit_resample(X_train.numpy(), y_train.numpy())
-                    #X_train = torch.tensor(X_train, dtype=torch.float32)
-                    #y_train = torch.tensor(y_train, dtype=torch.int64)
-                    #train_dataset = TensorDataset(X_train, y_train)
-                    #del X_train, y_train
-                #else:
                 train_dataset = Subset(dataset, train_index)
                 test_dataset = Subset(dataset, test_index)
-                train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6)
-                test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6)
+                train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6, persistent_workers=True)
+                test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6, persistent_workers=True)
                 print("STARTING TRAINING SESSION!!!")
-                train_model(model, model_filename, train_loader, epochs=epochs, device=DEVICE, learning_rate=learning_rate)
+                train_model(model, model_filename, train_loader, training_metric, epochs=epochs, device=DEVICE, learning_rate=learning_rate)
                 print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
                 if use_transformer:
                     final_model = MyModel(num_features, num_classes).to(DEVICE)

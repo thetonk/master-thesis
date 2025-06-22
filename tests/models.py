@@ -5,22 +5,6 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from ray import tune
 
-# CODE TO CHECK ON TRAINER, FOR TRAINING SPEED BOOST. WORKS ON AMPERE GPU DEVICES OR NEWER
-# scaler = torch.cuda.amp.GradScaler()
-
-# for data, label in train_loader:
-#     data = data.to(DEVICE)
-#     label = label.to(DEVICE)
-#     optimizer.zero_grad()
-
-#     with torch.cuda.amp.autocast():
-#         output = model(data)
-#         loss = loss_function(output, label)
-
-#     scaler.scale(loss).backward()
-#     scaler.step(optimizer)
-#     scaler.update()
-
 
 class EncoderTransformer(nn.Module):
     def __init__(self, feature_dim: int, embedding_dim:int = 128, num_heads:int = 8, 
@@ -128,7 +112,7 @@ def _correct(output: torch.Tensor, target: torch.Tensor):
     return (predicted == target).sum().item()
 
 
-def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader, loss_function = nn.CrossEntropyLoss(), 
+def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader, metric, loss_function = nn.CrossEntropyLoss(), 
                 epochs: int = 30, learning_rate: int = 1e-3, device="cuda", train_tune=False):
     #torch.autograd.set_detect_anomaly(True)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -136,24 +120,27 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
     save_model = False
     start_time = int(time.time())
     for epoch in range(epochs):
+        metric.reset()
         save_model = False
         model.train()
         batch_number = len(train_loader)
-        samples = len(train_loader.dataset)
+        #samples = len(train_loader.dataset)
         total_loss = 0
-        total_correct = 0
+        #total_correct = 0
         for data, label in train_loader:
             data = data.to(device)
             label = label.to(device)
             output = model(data)
             loss = loss_function(output, label)
             total_loss += loss.item()
-            total_correct += _correct(output, label)
+            #total_correct += _correct(output, label)
+            metric.update(output, label)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
         train_loss = total_loss/batch_number
-        train_accuracy = total_correct/samples
+        #train_accuracy = total_correct/samples
+        train_accuracy = metric.compute().item()
         if train_accuracy > best_accuracy:
             best_accuracy = train_accuracy
             save_model = True
