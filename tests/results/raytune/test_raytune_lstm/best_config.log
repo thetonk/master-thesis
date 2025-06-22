@@ -1,0 +1,1 @@
+Best config: {'lr': 0.0001, 'batch_size': 64, 'hidden_lstm_states': 512, 'hidden_mlp_neurons': 1024} Best macro accuracy: 0.9775896668434143

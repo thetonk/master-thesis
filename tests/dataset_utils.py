@@ -32,7 +32,7 @@ class CSVDataset():
     def __init__(self, dataset_path, label_column, feature_columns=FEATURE_COLUMNS, chunk_size=1e+6):
         self._chunk_size = chunk_size
         self._label_column = label_column.replace("_", " ")
-        self._columns_to_drop = ["Src IP", "Dst IP", "Timestamp"]
+        self._columns_to_drop = ["Timestamp"]
         self.dataset_path = dataset_path
         self.categories = None
         self.X = None

@@ -48,7 +48,7 @@ if __name__ == "__main__":
             use_transformer = False
         dataset_folder_path = sys.argv[2]
         label_column = sys.argv[3]
-        raytune_dir = os.path.realpath(os.path.join("results", "raytune"))
+        raytune_dir = os.path.realpath(os.path.join("tests", "results", "raytune"))
         rows_limit = int(400e+3)
         os.makedirs(raytune_dir, exist_ok=True)
     
@@ -116,9 +116,11 @@ if __name__ == "__main__":
             search_alg=hyperopt_search
         ),
         run_config=tune.RunConfig(
-            name="test_raytune", 
+            name=f"test_raytune_{model_name}", 
             storage_path=raytune_dir
         )
     )
     result = tuner.fit().get_best_result()
-    print("Best config:", result.config, "Best macro accuracy average:", result.metrics["mean_accuracy"])
+    best_config_file = os.path.join(raytune_dir, f"test_raytune_{model_name}", "best_config.log")
+    with open(best_config_file, "w") as f:
+        print("Best config:", result.config, "Best macro accuracy average:", result.metrics["mean_accuracy"], file=f)

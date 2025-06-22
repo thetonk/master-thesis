@@ -45,8 +45,11 @@ if __name__ == "__main__":
             dataset_name = os.path.basename(dataset_path).split(".")[0]
             if folds < 0 or epochs < 1:
                 raise ValueError
-            os.makedirs("trained_models", exist_ok=True)
-            os.makedirs("images", exist_ok=True)
+            results_dir = os.path.join("tests", "results")
+            trained_models_dir = os.path.join(results_dir, "trained_models")
+            images_dir = os.path.join(results_dir, "images")
+            os.makedirs(trained_models_dir, exist_ok=True)
+            os.makedirs(images_dir, exist_ok=True)
             model_filename = os.path.join("trained_models", f"best_model_{dataset_name}.pt")
         except ValueError:
             print("Please specify valid number of folds and epochs", file=sys.stderr)
@@ -155,7 +158,7 @@ if __name__ == "__main__":
             axes.text(j, i, multiclass_confusion_matrix[i, j], ha="center", va="center")
     plt.colorbar(mat)
     fig.tight_layout()
-    plt.savefig(os.path.join("images", f"confusion_matrix_{dataset_name}.png"))
+    plt.savefig(os.path.join(images_dir, f"confusion_matrix_{dataset_name}.png"))
     plt.close()
 
     # Prepare and plot last SHAP values
@@ -208,7 +211,7 @@ if __name__ == "__main__":
         fig.delaxes(axes[i])
 
     plt.tight_layout(pad=0.8)
-    plt.savefig(os.path.join("images", f"shap_values_{dataset_name}.png"))
+    plt.savefig(os.path.join(images_dir, f"shap_values_{dataset_name}.png"))
     plt.close(fig)
     results_df = pd.concat(df_list)
-    results_df.to_csv(f"results_{dataset_name}.csv")
+    results_df.to_csv(os.path.join(results_dir, f"results_{dataset_name}.csv"))
