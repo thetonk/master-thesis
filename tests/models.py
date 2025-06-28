@@ -52,14 +52,14 @@ class MLPClassifier(nn.Module):
 
 class MyModel(nn.Module):
     def __init__(self, num_features: int, num_classes: int, num_encoders:int = 1, num_mlps:int = 1,
-                 enc_embedding_dim:int = 128, enc_n_heads:int = 8, enc_ff_neurons:int = 256, mlp_hidden_neurons:int = 512):
+                 enc_embedding_dim:int = 128, enc_num_heads:int = 8, enc_ff_neurons:int = 256, mlp_hidden_neurons:int = 512):
         super().__init__()
         layer_list = []
         for i in range(num_encoders):
             if i == 0:
-                layer_list.append(EncoderTransformer(num_features, enc_embedding_dim, num_heads=enc_n_heads, ff_neurons=enc_ff_neurons))
+                layer_list.append(EncoderTransformer(num_features, enc_embedding_dim, num_heads=enc_num_heads, ff_neurons=enc_ff_neurons))
             else:
-                layer_list.append(EncoderTransformer(enc_embedding_dim, enc_embedding_dim, num_heads=enc_n_heads, ff_neurons=enc_ff_neurons))
+                layer_list.append(EncoderTransformer(enc_embedding_dim, enc_embedding_dim, num_heads=enc_num_heads, ff_neurons=enc_ff_neurons))
         for i in range(num_mlps):
             if i == num_mlps - 1:
                 layer_list.append(MLPClassifier(enc_embedding_dim, num_classes, hidden_neurons=mlp_hidden_neurons))
@@ -113,7 +113,7 @@ def _correct(output: torch.Tensor, target: torch.Tensor):
 
 
 def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader, metric, loss_function = nn.CrossEntropyLoss(), 
-                epochs: int = 30, learning_rate: int = 1e-3, device="cuda", train_tune=False):
+                epochs: int = 30, learning_rate: float = 1e-3, device="cuda", train_tune=False):
     #torch.autograd.set_detect_anomaly(True)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     best_accuracy = 0

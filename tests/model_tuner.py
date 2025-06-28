@@ -19,7 +19,7 @@ def prepare_tunable_training(dataset_id, epochs:int, n_features:int, n_classes: 
         train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
         metric = MulticlassAccuracy(average='macro', num_classes=n_classes, device=device)
         if use_transformer:
-            model = MyModel(n_features, n_classes, config["n_encoders"], config["n_mlp"], config["enc_embedding_dim"],
+            model = MyModel(n_features, n_classes, config["num_encoders"], config["num_mlps"], config["enc_embedding_dim"],
                             config["enc_num_heads"], config["enc_ff_neurons"], config["mlp_hidden_neurons"]).to(device)
         else:
             model = MyLSTMClassifier(n_classes, config["hidden_lstm_states"], config["hidden_mlp_neurons"]).to(device)
@@ -92,8 +92,8 @@ if __name__ == "__main__":
                         "enc_num_heads": tune.choice([4,8,16,32]),
                         "enc_ff_neurons": tune.choice([64, 128, 256, 512]),
                         "mlp_hidden_neurons": tune.choice([128, 256, 512, 1024]),
-                        "n_encoders": tune.choice([1,2,3,4]),
-                        "n_mlp": tune.choice([1,2,3,4])}
+                        "num_encoders": tune.choice([1,2,3,4]),
+                        "num_mlps": tune.choice([1,2,3,4])}
     else:
         search_space = {"lr": tune.choice([1e-5, 1e-4, 1e-3, 1e-2]),
                         "batch_size": tune.choice([32, 64, 128, 256]),
