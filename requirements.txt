@@ -13,3 +13,4 @@ scipy
 imbalanced-learn
 ray[tune]
 hyperopt
+nevergrad
