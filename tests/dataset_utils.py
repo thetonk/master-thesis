@@ -3,13 +3,14 @@ import os
 import sys
 import ipaddress
 import torch
+from torch.utils.data import TensorDataset
 from sklearn.model_selection import StratifiedShuffleSplit
 import pandas as pd
 import numpy as np
 
 #np.random.seed(42)
 
-FEATURE_COLUMNS = [
+FEATURE_COLUMNS = (
     "Src IP","Src Port","Dst IP","Dst Port","Protocol","Timestamp","Flow Duration","Tot Fwd Pkts","Tot Bwd Pkts","TotLen Fwd Pkts","TotLen Bwd Pkts",
     "Fwd Pkt Len Max","Fwd Pkt Len Min","Fwd Pkt Len Mean","Fwd Pkt Len Std","Bwd Pkt Len Max","Bwd Pkt Len Min","Bwd Pkt Len Mean","Bwd Pkt Len Std","Flow Byts/s",
     "Flow Pkts/s","Flow IAT Mean","Flow IAT Std","Flow IAT Max","Flow IAT Min","Fwd IAT Tot","Fwd IAT Mean","Fwd IAT Std","Fwd IAT Max","Fwd IAT Min","Bwd IAT Tot",
@@ -18,7 +19,7 @@ FEATURE_COLUMNS = [
     "URG Flag Cnt","CWE Flag Count","ECE Flag Cnt","Down/Up Ratio","Pkt Size Avg","Fwd Seg Size Avg","Bwd Seg Size Avg","Fwd Byts/b Avg","Fwd Pkts/b Avg","Fwd Blk Rate Avg",
     "Bwd Byts/b Avg","Bwd Pkts/b Avg","Bwd Blk Rate Avg","Subflow Fwd Pkts","Subflow Fwd Byts","Subflow Bwd Pkts","Subflow Bwd Byts","Init Fwd Win Byts","Init Bwd Win Byts",
     "Fwd Act Data Pkts","Fwd Seg Size Min","Active Mean","Active Std","Active Max","Active Min","Idle Mean","Idle Std","Idle Max","Idle Min"
-]
+)
 
 def _prepare_numeric_columns(df: pd.DataFrame, label_column = "Label") -> pd.DataFrame:
     non_numeric_columns = ["Src IP", "Dst IP", "Timestamp", label_column]
@@ -39,9 +40,10 @@ class CSVDataset():
         self.y = None
         df = pd.read_csv(dataset_path, nrows=0)
         df.columns = df.columns.str.replace("_", " ")
-        self._columns_to_drop = self._columns_to_drop + df.columns.difference(feature_columns).to_list()
+        self._columns_to_drop = self._columns_to_drop + df.columns.difference(list(feature_columns)).to_list()
         df = df.drop(columns=self._columns_to_drop, errors="ignore")
         self.features = df.columns.to_list()
+
     
     @staticmethod
     def _read_csv_in_chunks(file_path, columns_to_drop, chunk_size=1e+6):
@@ -55,16 +57,13 @@ class CSVDataset():
                 print("Chunk shape:",chunk.shape, "Datatypes:", chunk.dtypes)
                 yield chunk
 
-    @staticmethod
-    def _chunk_to_tensor(chunk: pd.DataFrame) -> torch.Tensor:
-        return torch.tensor(chunk.to_numpy())
     
     def load(self, balance_classes=True, rows_limit=500e+3):
         rows_limit = int(rows_limit)
         label_column = self._label_column
         tensors = []
         for chunk in CSVDataset._read_csv_in_chunks(self.dataset_path, self._columns_to_drop, chunk_size=self._chunk_size):
-            tensors.append(CSVDataset._chunk_to_tensor(chunk))
+            tensors.append(torch.tensor(chunk.to_numpy()))
         x_tensor = torch.cat(tensors, dim=0).float()
         y_df = pd.read_csv(self.dataset_path, delimiter=",", usecols=[label_column], dtype={label_column: "category"})
         labels = y_df[label_column]
@@ -75,7 +74,7 @@ class CSVDataset():
             minimum_class_samples = labels.cat.codes.value_counts().min()
             rows_limit_per_class = min(minimum_class_samples, int(rows_limit / num_classes))
             if rows_limit_per_class < (rows_limit / num_classes):
-                print(f"Warning: dataset {self.dataset_path} has less samples than the required! Has: {minimum_class_samples} samples!", file=sys.stderr)
+                print(f"Warning: dataset {self.dataset_path} minority class has less samples than the required! Has: {minimum_class_samples} samples!", file=sys.stderr)
             indexes = []
             for category in labels.cat.categories:
                 indexes += labels.index[labels == category].to_series().sample(n=rows_limit_per_class).to_list()
@@ -96,9 +95,56 @@ class CSVDataset():
         self.categories = dict(enumerate(labels.cat.categories))
 
 
+class LoadedTensorDataset():
+    def __init__(self, dataset: TensorDataset, n_rows: int, n_features: int, n_classes: int, feature_names):
+        self.dataset = dataset
+        self.num_rows = n_rows
+        self.num_features = n_features
+        self.num_classes = n_classes
+        self.feature_names = feature_names
+
+
+def load_datasets_from_dir(dataset_dir, label_column: str, rows_per_dataset: int = None, total_rows_limit: int=None) -> LoadedTensorDataset:
+    # assume that all datasets have same amount of classes and have same label column and features
+    # first pass, discover num of classes and feature names
+    dataset_list = []
+    for root, _, files in os.walk(dataset_dir):
+        for file in files:
+            filename_path = os.path.join(root, file)
+            dataset_list.append(filename_path)
+    dataset_list.sort(key=lambda filename: os.path.getsize(filename))
+    num_datasets = len(dataset_list)
+    print("Number of datasets found: ", num_datasets)
+    csv_dataset = CSVDataset(dataset_list[0], label_column, chunk_size=3e+6)
+    csv_dataset.load(balance_classes=False, rows_limit=10)
+    num_classes = len(csv_dataset.categories)
+    feature_names = csv_dataset.features
+    num_features = csv_dataset.X.shape[1]
+    if rows_per_dataset is None:
+        rows_per_dataset = int(total_rows_limit / num_datasets)
+    # second pass, merge datasets into a large single dataset
+    X = None
+    y = None
+    for dataset_path in dataset_list:
+        print(f"Loading {dataset_path}...")
+        csv_dataset = CSVDataset(dataset_path, label_column, chunk_size=3e+6)
+        csv_dataset.load(balance_classes=True, rows_limit=rows_per_dataset)
+        if X is None:
+            X, y = csv_dataset.X, csv_dataset.y
+        else:
+            X = torch.cat((X, csv_dataset.X), dim=0)
+            y = torch.cat((y, csv_dataset.y), dim=0)
+        del csv_dataset
+        print("Done!")
+    dataset = TensorDataset(X, y)
+    num_rows = X.shape[0]
+    del X, y
+    return LoadedTensorDataset(dataset, num_rows, num_features, num_classes, feature_names)
+
+
 def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", chunk_size=1e+6, bin_benign_label=None):
     label_column = label_column.replace("_", " ")
-    dataset_columns = FEATURE_COLUMNS + [label_column]
+    dataset_columns = list(FEATURE_COLUMNS) + [label_column]
     missing_fields = ["Src IP", "Src Port", "Dst IP"]
     total_dropped_lines = 0
     header_inserted = False

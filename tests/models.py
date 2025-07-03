@@ -2,6 +2,7 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
+from torcheval.metrics import Metric
 from torch.utils.data import DataLoader
 from ray import tune
 
@@ -112,12 +113,12 @@ def _correct(output: torch.Tensor, target: torch.Tensor):
     return (predicted == target).sum().item()
 
 
-def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader, metric, loss_function = nn.CrossEntropyLoss(), 
-                epochs: int = 30, learning_rate: float = 1e-3, device="cuda", train_tune=False):
+def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader, val_loader: DataLoader | None, metric: Metric,
+                loss_function = nn.CrossEntropyLoss(), epochs: int = 30,
+                learning_rate: float = 1e-3, device="cuda", train_tune=False):
     #torch.autograd.set_detect_anomaly(True)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     best_accuracy = 0
-    save_model = False
     start_time = int(time.time())
     for epoch in range(epochs):
         metric.reset()
@@ -145,9 +146,15 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
             best_accuracy = train_accuracy
             save_model = True
         print("="*50)
-        print(f"Epoch {epoch+1}/{epochs}. Average accuracy: {train_accuracy*100:.3f}%, average loss: {train_loss:.5f}, current loss: {loss:.5f}.")
+        print(f"Epoch {epoch+1}/{epochs}. Average train accuracy: {train_accuracy*100:.3f}%, average loss: {train_loss:.5f}, current loss: {loss:.5f}.")
         if train_tune:
-            tune.report({"mean_accuracy": train_accuracy})
+            metric.reset()
+            for data, label in val_loader:
+                data, label = data.to(device), label.to(device)
+                output = model(data)
+                metric.update(output, label)
+            val_accuracy = metric.compute().item()
+            tune.report({"train_accuracy": train_accuracy, "val_accuracy": val_accuracy})
         if save_model:
             print("Saved model!")
             torch.save(model.state_dict(), model_filename)
@@ -155,7 +162,7 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
     print(f"Training took {stop_time - start_time} seconds.")
 
 
-def test_model(model: nn.Module, test_loader: DataLoader, metrics, loss_function = nn.CrossEntropyLoss(), device="cuda") -> list[np.ndarray]:
+def test_model(model: nn.Module, test_loader: DataLoader, metrics: list[Metric], loss_function = nn.CrossEntropyLoss(), device="cuda") -> list[np.ndarray]:
     model.eval()
     num_batches = len(test_loader)
     num_items = len(test_loader.dataset)

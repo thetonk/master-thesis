@@ -24,7 +24,7 @@ label_column="$3"
 ray_temp_dir="/mnt/cn50_nvme/tmp/mspyrido/ray"
 port='6369'
 
-mkdir -p "$ray_temp_dir"
+#mkdir -p "$ray_temp_dir"
 
 export RAY_DEDUP_LOGS=0 RAY_USAGE_STATS_ENABLED=0
 
@@ -41,7 +41,8 @@ sleep 10
 
 python3 -u model_tuner.py SLURM "$model" "$dataset_directory" "$label_column"
 
+echo "Stopping ray head node..."
 ray stop -g 15
 deactivate
-rm -r "$ray_temp_dir"
+#rm -r "$ray_temp_dir"
 exit

@@ -1,1 +1,0 @@
-Best config: {'lr': 0.0001, 'batch_size': 64, 'enc_embedding_dim': 128, 'enc_num_heads': 8, 'enc_ff_neurons': 256, 'mlp_hidden_neurons': 256, 'n_encoders': 4, 'n_mlp': 1} Best macro accuracy average: 0.9024960398674011

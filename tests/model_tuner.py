@@ -1,9 +1,11 @@
 import os
 os.environ["RAY_DEDUP_LOGS"] = '0'
+os.environ["RAY_USAGE_STATS_ENABLED"] = '0'
 import sys
 import tempfile
+import json
 import torch
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import DataLoader, random_split
 from torcheval.metrics import MulticlassAccuracy
 import ray
 from ray import tune
@@ -18,7 +20,10 @@ def prepare_tunable_training(dataset_id, epochs:int, n_features:int, n_classes: 
     def tunable_training(config):
         dataset = ray.get(dataset_id)
         batch_size = config["batch_size"]
-        train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
+        train_dataset, validation_dataset = random_split(dataset, [0.8, 0.2])
+        del dataset
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
+        validation_loader = DataLoader(validation_dataset, batch_size=batch_size, num_workers=4, pin_memory=True, persistent_workers=True)
         metric = MulticlassAccuracy(average='macro', num_classes=n_classes, device=device)
         if use_transformer:
             model = MyModel(n_features, n_classes, config["num_encoders"], config["num_mlps"], config["enc_embedding_dim"],
@@ -27,7 +32,8 @@ def prepare_tunable_training(dataset_id, epochs:int, n_features:int, n_classes: 
             model = MyLSTMClassifier(n_classes, config["hidden_lstm_states"], config["hidden_mlp_neurons"]).to(device)
         with tempfile.NamedTemporaryFile(suffix=".pt") as tmpfile:
             tmpfilename = tmpfile.name
-            train_model(model, tmpfilename, train_loader, metric, epochs=epochs, learning_rate=config["lr"], train_tune=True, device=device)
+            train_model(model, tmpfilename, train_loader, validation_loader, metric=metric, epochs=epochs,
+                        learning_rate=config["lr"], train_tune=True, device=device)
     return tunable_training
 
 
@@ -51,6 +57,7 @@ if __name__ == "__main__":
         if model_name.lower() == "lstm":
             use_transformer = False
         if run_mode.lower() == "slurm":
+            use_slurm = True
             # running on aristotle HPC
             if use_transformer:
                 tune_resources = {"cpu": 4, "gpu": 0.25}
@@ -66,39 +73,11 @@ if __name__ == "__main__":
         raytune_dir = os.path.realpath(os.path.join("tests", "results", "raytune"))
         rows_limit = int(400e+3)
         os.makedirs(raytune_dir, exist_ok=True)
-    
-    # assume that all datasets have same amount of classes and have same label column and features
-    # first pass, discover num of classes and feature names
-    dataset_list = []
-    for root, _, files in os.walk(dataset_folder_path):
-        for file in files:
-            filename_path = os.path.join(root, file)
-            dataset_list.append(filename_path)
-    dataset_list.sort(key=lambda filename: os.path.getsize(filename))
-    num_datasets = len(dataset_list)
-    print("Number of datasets found: ", num_datasets)
-    csv_dataset = dataset_utils.CSVDataset(dataset_list[0], label_column, chunk_size=3e+6)
-    csv_dataset.load(balance_classes=False, rows_limit=10)
-    num_classes = len(csv_dataset.categories)
-    feature_names = csv_dataset.features
-    num_features = csv_dataset.X.shape[1]
-    # second pass, merge datasets into a large single dataset
-    rows_per_dataset = int(rows_limit / num_datasets)
-    X = None
-    y = None
-    for dataset_path in dataset_list:
-        print(f"Loading {dataset_path}...")
-        csv_dataset = dataset_utils.CSVDataset(dataset_path, label_column, chunk_size=3e+6)
-        csv_dataset.load(balance_classes=True, rows_limit=rows_per_dataset)
-        if X is None:
-            X, y = csv_dataset.X, csv_dataset.y
-        else:
-            X = torch.cat((X, csv_dataset.X), dim=0)
-            y = torch.cat((y, csv_dataset.y), dim=0)
-        del csv_dataset
-        print("Done!")
-    dataset = TensorDataset(X, y)
-    print(f"# of rows: {X.shape[0]}, # of features: {num_features}, # of classes: {num_classes}, datatype: {X.dtype}")
+
+    loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_folder_path, label_column, total_rows_limit=rows_limit)
+    dataset, num_rows, num_features, num_classes = loaded_dataset.dataset, loaded_dataset.num_rows, loaded_dataset.num_features, loaded_dataset.num_classes
+    del loaded_dataset
+    print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}")
     epochs = 10 if use_transformer else 5
     num_samples = 300 if use_transformer else 100
     if use_slurm:
@@ -130,22 +109,29 @@ if __name__ == "__main__":
     tune_with_resources = tune.with_resources(
         prepare_tunable_training(dataset_object_id, epochs, num_features, num_classes, use_transformer, DEVICE), 
         resources=tune_resources)
+    experiment_name = f"test_raytune_{model_name}"
+    experiment_dir = os.path.join(raytune_dir, experiment_name)
     tuner = tune.Tuner(
         tune_with_resources,
         param_space=search_space,
         tune_config=tune.TuneConfig(
             num_samples=num_samples,
-            metric="mean_accuracy",
+            metric="val_accuracy",
             mode="max",
             scheduler=hyperband,
             search_alg=nevergrad_search
         ),
         run_config=tune.RunConfig(
-            name=f"test_raytune_{model_name}", 
-            storage_path=raytune_dir
+            name=experiment_name,
+            storage_path=raytune_dir,
+            log_to_file=os.path.join(experiment_dir, "raytune_output_combined.log")
         )
     )
     result = tuner.fit().get_best_result()
-    best_config_file = os.path.join(raytune_dir, f"test_raytune_{model_name}", "best_config.log")
+    best_config_file = os.path.join(experiment_dir, "best_config_new.json")
     with open(best_config_file, "w") as f:
-        print("Best config:", result.config, "Best macro accuracy average:", result.metrics["mean_accuracy"], file=f)
+        json_content = {
+            "config": result.config,
+            "metrics": result.metrics
+        }
+        json.dump(json_content, f, sort_keys=True, indent=4)

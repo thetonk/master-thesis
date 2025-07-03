@@ -1,5 +1,6 @@
 import sys
 import os
+import json
 import pandas as pd
 import numpy as np
 import torch
@@ -12,6 +13,7 @@ import shap
 from shap.plots import bar
 import dataset_utils
 from models import MyModel, MyLSTMClassifier, train_model, test_model
+
 
 #SEED = 42
 
@@ -108,19 +110,18 @@ if __name__ == "__main__":
     else:
         try:
             model_name = sys.argv[1]
-            learning_rate = 1e-4
-            batch_size = 64
+            raytune_results_dir = os.path.join("tests", "results", "raytune")
             if model_name.lower() == "lstm":
                 use_transformer = False
-                #learning_rate = 1e-4
-                model_hyperparameters = {
-                    'hidden_lstm_states': 512, 'hidden_mlp_neurons': 1024
-                }
+                config_file = os.path.join(raytune_results_dir, "test_raytune_lstm", "best_config.json")
             else:
-                model_hyperparameters = {
-                    'enc_embedding_dim': 128, 'enc_num_heads': 8, 'enc_ff_neurons': 256,
-                    'mlp_hidden_neurons': 256, 'num_encoders': 4, 'num_mlps': 1
-                }
+                config_file = os.path.join(raytune_results_dir, "test_raytune_transformer", "best_config.json")
+            with open(config_file, "r") as file:
+                json_data = json.load(file)
+                config = json_data["config"]
+            learning_rate = config.pop("lr")
+            batch_size = config.pop("batch_size")
+            model_hyperparameters = config
             dataset_path = sys.argv[2]
             label_column = sys.argv[3]
             num_runs = int(sys.argv[4])
@@ -173,7 +174,7 @@ if __name__ == "__main__":
             train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6)
             test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6)
             print("STARTING TRAINING SESSION!!!")
-            train_model(model, model_filename, train_loader, training_metric, epochs=epochs, device=DEVICE, learning_rate=learning_rate)
+            train_model(model, model_filename, train_loader, None, training_metric, epochs=epochs, device=DEVICE, learning_rate=learning_rate)
             print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
             if use_transformer:
                 final_model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
@@ -213,7 +214,7 @@ if __name__ == "__main__":
                 train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=6)
                 test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=6)
                 print("STARTING TRAINING SESSION!!!")
-                train_model(model, model_filename, train_loader, training_metric, epochs=epochs, device=DEVICE, learning_rate=learning_rate)
+                train_model(model, model_filename, train_loader, None, metric=training_metric, epochs=epochs, device=DEVICE, learning_rate=learning_rate)
                 print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
                 if use_transformer:
                     final_model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
