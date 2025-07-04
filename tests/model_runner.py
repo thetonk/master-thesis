@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import argparse
 import pandas as pd
 import numpy as np
 import torch
@@ -37,7 +38,7 @@ def plot_confusion_matrix(confusion_matrix, plot_filename):
     plt.close()
 
 
-def plot_shap_values(model, dataset, plot_filename):
+def plot_shap_values(model, dataset, num_classes, feature_names, plot_filename):
     # Prepare and plot last SHAP values
     model = model.to("cpu")
     model.device = "cpu"
@@ -94,6 +95,19 @@ def plot_shap_values(model, dataset, plot_filename):
 
 if __name__ == "__main__":
     #torch.manual_seed(SEED)
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument("model", choices=("lstm", "transformer"), help="The model type")
+    parser.add_argument("label_column", type=str, help="The name of the column that will be used as class.", default="Label")
+    parser.add_argument("runs", type=int, help="Number of runs. Must not be 0", default=1)
+    parser.add_argument("folds", type=int, help="Number of folds. Must not be negative",default=0)
+    parser.add_argument("epochs", type=int, help="Number of traininig epochs. Must be larger than 0", default=10)
+    dataset_args = parser.add_mutually_exclusive_group(required=True)
+    dataset_args.add_argument("-f", "--file", type=str, help="Dataset CSV file", dest="dataset_file")
+    dataset_args.add_argument("-d", "--directory", type=str, help="Dataset directory containing CSV files", dest="dataset_folder")
+    args = parser.parse_args()
+    use_transformer = True
+    load_directory = False
+
     if torch.cuda.is_available():
         print("CUDA available! GPU device name is:", torch.cuda.get_device_name())
         DEVICE = "cuda"
@@ -101,57 +115,71 @@ if __name__ == "__main__":
         print("CUDA is not available")
         DEVICE = "cpu"
 
-    HELPTEXT = f"Usage: {sys.argv[0]} MODEL DATASET_PATH LABEL_COLUMN N_RUNS N_FOLDS N_EPOCHS\nAvailable options for MODEL are: 'lstm', 'transformer'."
-    use_transformer = True
-    if len(sys.argv) < 7:
-        print("Error! You must specify label column name, number of folds and number of epochs. Exiting!", file=sys.stderr)
-        print(HELPTEXT)
+    try:
+        model_name = args.model
+        raytune_results_dir = os.path.join("tests", "results", "raytune")
+        if model_name == "lstm":
+            use_transformer = False
+            config_file = os.path.join(raytune_results_dir, "test_raytune_lstm", "best_config.json")
+        else:
+            config_file = os.path.join(raytune_results_dir, "test_raytune_transformer", "best_config.json")
+        with open(config_file, "r") as file:
+            json_data = json.load(file)
+            config = json_data["config"]
+        learning_rate = config.pop("lr")
+        batch_size = config.pop("batch_size")
+        model_hyperparameters = config
+        if args.dataset_folder is None:
+            dataset_file = args.dataset_file
+        else:
+            dataset_folder = args.dataset_folder
+            load_directory = True
+        label_column = args.label_column
+        num_runs = args.runs
+        folds = args.folds
+        epochs = args.epochs
+        if folds < 0 or epochs < 1 or num_runs < 1:
+            raise ValueError
+    except ValueError:
+        print("Please specify valid number of folds and epochs", file=sys.stderr)
+        parser.print_help()
         sys.exit(1)
-    else:
-        try:
-            model_name = sys.argv[1]
-            raytune_results_dir = os.path.join("tests", "results", "raytune")
-            if model_name.lower() == "lstm":
-                use_transformer = False
-                config_file = os.path.join(raytune_results_dir, "test_raytune_lstm", "best_config.json")
-            else:
-                config_file = os.path.join(raytune_results_dir, "test_raytune_transformer", "best_config.json")
-            with open(config_file, "r") as file:
-                json_data = json.load(file)
-                config = json_data["config"]
-            learning_rate = config.pop("lr")
-            batch_size = config.pop("batch_size")
-            model_hyperparameters = config
-            dataset_path = sys.argv[2]
-            label_column = sys.argv[3]
-            num_runs = int(sys.argv[4])
-            folds = int(sys.argv[5])
-            epochs = int(sys.argv[6])
-            dataset_name = os.path.basename(dataset_path).split(".")[0]
-            if folds < 0 or epochs < 1:
-                raise ValueError
-            results_dir = os.path.join("tests", "results")
-            trained_models_dir = os.path.join(results_dir, "trained_models")
-            images_dir = os.path.join(results_dir, "images")
-            os.makedirs(trained_models_dir, exist_ok=True)
-            os.makedirs(images_dir, exist_ok=True)
-            model_filename = os.path.join("trained_models", f"best_model_{model_name}_{dataset_name}.pt")
-        except ValueError:
-            print("Please specify valid number of folds and epochs", file=sys.stderr)
-            print(HELPTEXT)
-            sys.exit(1)
 
-    csv_dataset = dataset_utils.CSVDataset(dataset_path, label_column, chunk_size=3e+6)
-    csv_dataset.load(balance_classes=True, rows_limit=250e+3)
-    X, y, category_map, feature_names = csv_dataset.X, csv_dataset.y, csv_dataset.categories, csv_dataset.features
-    num_classes = len(category_map)
-    class_frequencies = y.bincount(minlength=num_classes)
-    class_percentages = class_frequencies.float() / y.shape[0]
-    print("Class percentages:", class_percentages)
-    dataset = TensorDataset(X, y)
-    #batch_size = 256
-    num_features = X.shape[1]
-    print(f"# of rows: {X.shape[0]}, # of features: {num_features}, # of classes: {num_classes}, datatype: {X.dtype}")
+    results_dir = os.path.join("tests", "results")
+    trained_models_dir = os.path.join(results_dir, "trained_models")
+    images_dir = os.path.join(results_dir, "images")
+    os.makedirs(trained_models_dir, exist_ok=True)
+    os.makedirs(images_dir, exist_ok=True)
+
+    if not load_directory:
+        dataset_name = os.path.basename(dataset_file).split(".")[0]
+        model_filename = os.path.join("trained_models", f"best_model_{model_name}_{dataset_name}.pt")
+        csv_dataset = dataset_utils.CSVDataset(dataset_file, label_column, chunk_size=3e+6)
+        csv_dataset.load(balance_classes=True, rows_limit=250e+3)
+        X, y, category_map, feature_names = csv_dataset.X, csv_dataset.y, csv_dataset.categories, csv_dataset.features
+        num_classes = len(category_map)
+        class_frequencies = y.bincount(minlength=num_classes)
+        class_percentages = class_frequencies.float() / y.shape[0]
+        print("Class percentages:", class_percentages)
+        dataset = TensorDataset(X, y)
+        num_features = X.shape[1]
+        num_rows = X.shape[0]
+        datatype = X.dtype
+    else:
+        model_filename = os.path.join("trained_models", f"best_model_{model_name}_TL.pt")
+        loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_folder, label_column, rows_per_dataset=77140)
+        dataset = loaded_dataset.dataset
+        num_features = loaded_dataset.num_features
+        num_rows = loaded_dataset.num_rows
+        num_classes = loaded_dataset.num_classes
+        datatype = loaded_dataset.dtype
+        feature_names = loaded_dataset.feature_names
+        category_map = loaded_dataset.categories
+        X = dataset.tensors[0]
+        y = dataset.tensors[1]
+        dataset_name = "TL"
+
+    print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}, datatype: {datatype}")
     metric_names = ["Run #","Fold #","Class", "Accuracy", "Precision", "Recall", "F1 Score"]
     df_list = []
     training_metric = MulticlassAccuracy(average='macro', num_classes=num_classes, device=DEVICE)
@@ -231,6 +259,6 @@ if __name__ == "__main__":
                 print("-"*50)
         print(f"[Run {i+1}] Multiclass confusion matrix:\n", multiclass_confusion_matrix, sep='')
         plot_confusion_matrix(multiclass_confusion_matrix, os.path.join(images_dir, f"confusion_matrix_{model_name}_{dataset_name}_{i+1}.png"))
-        plot_shap_values(final_model, dataset, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}.png"))
+        plot_shap_values(final_model, dataset, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}.png"))
     results_df = pd.concat(df_list)
     results_df.to_csv(os.path.join(results_dir, f"results_{model_name}_{dataset_name}.csv"))

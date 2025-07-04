@@ -3,6 +3,7 @@ torchvision
 torchinfo
 jupyter
 pandas
+pandas-stubs
 numpy
 scapy
 matplotlib

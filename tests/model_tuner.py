@@ -2,6 +2,7 @@ import os
 os.environ["RAY_DEDUP_LOGS"] = '0'
 os.environ["RAY_USAGE_STATS_ENABLED"] = '0'
 import sys
+import argparse
 import tempfile
 import json
 import torch
@@ -38,42 +39,42 @@ def prepare_tunable_training(dataset_id, epochs:int, n_features:int, n_classes: 
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument("run_mode", choices=("slurm", "local"), default="local", help="Run on SLURM or locally. Required for Ray")
+    parser.add_argument("model", choices=("lstm", "transformer"), help="Model type")
+    parser.add_argument("dataset_folder", type=str, help="Dataset directory containing CSV files")
+    parser.add_argument("label_column", type=str, help="The name of the column to be used as class", default="Label")
+    args = parser.parse_args()
     if torch.cuda.is_available():
         print("CUDA available! GPU device name is:", torch.cuda.get_device_name())
         DEVICE = "cuda"
     else:
         print("CUDA is not available")
         DEVICE = "cpu"
-    HELPTEXT = f"Usage: {sys.argv[0]} RUN_MODE MODEL DATASET_FOLDER LABEL_COLUMN"
     use_transformer = True
     use_slurm = False
-    if len(sys.argv) < 5:
-        print("Error! You must specify model, dataset folder and label column! Exiting!", file=sys.stderr)
-        print(HELPTEXT)
-        sys.exit(1)
-    else:
-        run_mode = sys.argv[1]
-        model_name = sys.argv[2]
-        if model_name.lower() == "lstm":
-            use_transformer = False
-        if run_mode.lower() == "slurm":
-            use_slurm = True
-            # running on aristotle HPC
-            if use_transformer:
-                tune_resources = {"cpu": 4, "gpu": 0.25}
-            else:
-                tune_resources = {"cpu": 4, "gpu": 0.5}
+    run_mode = args.run_mode
+    model_name = args.model
+    dataset_folder_path = args.dataset_folder
+    label_column = args.label_column
+    if model_name.lower() == "lstm":
+        use_transformer = False
+    if run_mode.lower() == "slurm":
+        use_slurm = True
+        # running on aristotle HPC
+        if use_transformer:
+            tune_resources = {"cpu": 4, "gpu": 0.25}
         else:
-            if use_transformer:
-                tune_resources = {"cpu": 4, "gpu": 0.5}
-            else:
-                tune_resources = {"cpu": 4, "gpu": 1}
-        dataset_folder_path = sys.argv[3]
-        label_column = sys.argv[4]
-        raytune_dir = os.path.realpath(os.path.join("tests", "results", "raytune"))
-        rows_limit = int(400e+3)
-        os.makedirs(raytune_dir, exist_ok=True)
-
+            tune_resources = {"cpu": 4, "gpu": 0.5}
+    else:
+        if use_transformer:
+            tune_resources = {"cpu": 4, "gpu": 0.5}
+        else:
+            tune_resources = {"cpu": 4, "gpu": 1}
+    raytune_dir = os.path.realpath(os.path.join("tests", "results", "raytune"))
+    rows_limit = int(400e+3)
+    os.makedirs(raytune_dir, exist_ok=True)
+    HELPTEXT = f"Usage: {sys.argv[0]} RUN_MODE MODEL DATASET_FOLDER LABEL_COLUMN"
     loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_folder_path, label_column, total_rows_limit=rows_limit)
     dataset, num_rows, num_features, num_classes = loaded_dataset.dataset, loaded_dataset.num_rows, loaded_dataset.num_features, loaded_dataset.num_classes
     del loaded_dataset
@@ -93,17 +94,20 @@ if __name__ == "__main__":
                         "mlp_hidden_neurons": tune.choice([128, 256, 512, 1024]),
                         "num_encoders": tune.choice([1,2,3,4]),
                         "num_mlps": tune.choice([1,2,3,4])}
+        initial_config = [{
+            'lr': 0.0001, 'batch_size': 64, 'enc_embedding_dim': 128, 'enc_num_heads': 8, 'enc_ff_neurons': 256,
+            'mlp_hidden_neurons': 256, 'num_encoders': 4, 'num_mlps': 1
+        }]
     else:
         search_space = {"lr": tune.choice([1e-5, 1e-4, 1e-3, 1e-2]),
                         "batch_size": tune.choice([32, 64, 128, 256]),
                         "hidden_lstm_states": tune.choice([128, 256, 512]),
                         "hidden_mlp_neurons": tune.choice([128, 256, 512, 1024])}
+        inial_config = [{
+            "lr": 0.0001, "batch_size": 64, "hidden_lstm_states": 512, "hidden_mlp_neurons": 1024
+        }]
     hyperband = HyperBandScheduler(time_attr="training_iteration", max_t=epochs, reduction_factor=2)
     #hyperopt_search = HyperOptSearch()
-    initial_config = [{
-        'lr': 0.0001, 'batch_size': 64, 'enc_embedding_dim': 128, 'enc_num_heads': 8, 'enc_ff_neurons': 256,
-        'mlp_hidden_neurons': 256, 'num_encoders': 4, 'num_mlps': 1
-    }]
     nevergrad_search = NevergradSearch(optimizer=ng.optimizers.DiscreteOnePlusOne, points_to_evaluate=initial_config)
     dataset_object_id = ray.put(dataset)
     tune_with_resources = tune.with_resources(
@@ -128,7 +132,7 @@ if __name__ == "__main__":
         )
     )
     result = tuner.fit().get_best_result()
-    best_config_file = os.path.join(experiment_dir, "best_config_new.json")
+    best_config_file = os.path.join(experiment_dir, "best_config.json")
     with open(best_config_file, "w") as f:
         json_content = {
             "config": result.config,

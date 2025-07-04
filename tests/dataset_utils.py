@@ -1,6 +1,7 @@
 import os
 #import random
 import sys
+import argparse
 import ipaddress
 import torch
 from torch.utils.data import TensorDataset
@@ -96,15 +97,18 @@ class CSVDataset():
 
 
 class LoadedTensorDataset():
-    def __init__(self, dataset: TensorDataset, n_rows: int, n_features: int, n_classes: int, feature_names):
+    def __init__(self, dataset: TensorDataset, n_rows: int, n_features: int, categories: dict, feature_names, dtype=torch.float32):
         self.dataset = dataset
         self.num_rows = n_rows
         self.num_features = n_features
-        self.num_classes = n_classes
+        self.categories = categories
+        self.num_classes = len(categories)
         self.feature_names = feature_names
+        self.dtype = dtype
 
 
-def load_datasets_from_dir(dataset_dir, label_column: str, rows_per_dataset: int = None, total_rows_limit: int=None) -> LoadedTensorDataset:
+def load_datasets_from_dir(dataset_dir, label_column: str, rows_per_dataset: int = None,
+                           total_rows_limit: int=None, as_tensors_list: bool=False) -> LoadedTensorDataset | list[TensorDataset]:
     # assume that all datasets have same amount of classes and have same label column and features
     # first pass, discover num of classes and feature names
     dataset_list = []
@@ -117,29 +121,37 @@ def load_datasets_from_dir(dataset_dir, label_column: str, rows_per_dataset: int
     print("Number of datasets found: ", num_datasets)
     csv_dataset = CSVDataset(dataset_list[0], label_column, chunk_size=3e+6)
     csv_dataset.load(balance_classes=False, rows_limit=10)
-    num_classes = len(csv_dataset.categories)
+    dataset_categories = csv_dataset.categories
     feature_names = csv_dataset.features
     num_features = csv_dataset.X.shape[1]
     if rows_per_dataset is None:
         rows_per_dataset = int(total_rows_limit / num_datasets)
     # second pass, merge datasets into a large single dataset
-    X = None
+    x = None
     y = None
+    tensor_datasets = []
     for dataset_path in dataset_list:
         print(f"Loading {dataset_path}...")
         csv_dataset = CSVDataset(dataset_path, label_column, chunk_size=3e+6)
         csv_dataset.load(balance_classes=True, rows_limit=rows_per_dataset)
-        if X is None:
-            X, y = csv_dataset.X, csv_dataset.y
+        if as_tensors_list:
+            tensor_datasets.append(TensorDataset(csv_dataset.X, csv_dataset.y))
         else:
-            X = torch.cat((X, csv_dataset.X), dim=0)
-            y = torch.cat((y, csv_dataset.y), dim=0)
+            if x is None:
+                x, y = csv_dataset.X, csv_dataset.y
+            else:
+                x = torch.cat((x, csv_dataset.X), dim=0)
+                y = torch.cat((y, csv_dataset.y), dim=0)
         del csv_dataset
         print("Done!")
-    dataset = TensorDataset(X, y)
-    num_rows = X.shape[0]
-    del X, y
-    return LoadedTensorDataset(dataset, num_rows, num_features, num_classes, feature_names)
+    if as_tensors_list:
+        return tensor_datasets
+    else:
+        dataset = TensorDataset(x, y)
+        num_rows = x.shape[0]
+        dtype = x.dtype
+        del x, y
+        return LoadedTensorDataset(dataset, num_rows, num_features, dataset_categories, feature_names, dtype)
 
 
 def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", chunk_size=1e+6, bin_benign_label=None):
@@ -249,14 +261,16 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
 
 
 if __name__ == "__main__":
-    HELPTEXT = f"Usage: {sys.argv[0]} DATASET_FOLDER MERGED_DATASET_PATH LABEL_COLUMN BENIGN_LABEL"
-    if len(sys.argv) < 5:
-        print("Insufficient parameters. Exiting!", file=sys.stderr)
-        print(HELPTEXT)
-        sys.exit(1)
-    else:
-        dataset_folder = sys.argv[1]
-        merged_dataset_path = sys.argv[2]
-        label_column = sys.argv[3]
-        benign_label = sys.argv[4]
-        merge_cicflow_csvs(dataset_folder, merged_dataset_path, label_column=label_column, chunk_size=2e+6, bin_benign_label=benign_label)
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument("dataset_folder", type=str, help="Dataset folder containing CSV files")
+    parser.add_argument("merged_dataset_path", type=str, help="Path to save the merged CSV dataset")
+    parser.add_argument("label_column", type=str, help="The name of the column that will be used as class.", default="Label")
+    parser.add_argument("benign_label", type=str, help="The label of benign samples", default="Normal")
+    args = parser.parse_args()
+    dataset_folder = args.dataset_folder
+    merged_dataset_path = args.merged_dataset_path
+    label_column = args.label_column
+    benign_label = args.benign_label
+    merge_cicflow_csvs(dataset_folder, merged_dataset_path, label_column=label_column, chunk_size=2e+6,
+                       bin_benign_label=benign_label)
+
