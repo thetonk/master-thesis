@@ -47,10 +47,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if torch.cuda.is_available():
         print("CUDA available! GPU device name is:", torch.cuda.get_device_name())
-        DEVICE = "cuda"
+        DEVICE = torch.device("cuda")
     else:
         print("CUDA is not available")
-        DEVICE = "cpu"
+        DEVICE = torch.device("cpu")
     use_transformer = True
     use_slurm = False
     run_mode = args.run_mode

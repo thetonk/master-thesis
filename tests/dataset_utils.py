@@ -108,7 +108,8 @@ class LoadedTensorDataset():
 
 
 def load_datasets_from_dir(dataset_dir, label_column: str, rows_per_dataset: int = None,
-                           total_rows_limit: int=None, as_tensors_list: bool=False) -> LoadedTensorDataset | list[TensorDataset]:
+                           total_rows_limit: int=None, balance_classes: bool= False,
+                           as_tensors_list: bool=False) -> LoadedTensorDataset | list[LoadedTensorDataset]:
     # assume that all datasets have same amount of classes and have same label column and features
     # first pass, discover num of classes and feature names
     dataset_list = []
@@ -120,7 +121,7 @@ def load_datasets_from_dir(dataset_dir, label_column: str, rows_per_dataset: int
     num_datasets = len(dataset_list)
     print("Number of datasets found: ", num_datasets)
     csv_dataset = CSVDataset(dataset_list[0], label_column, chunk_size=3e+6)
-    csv_dataset.load(balance_classes=False, rows_limit=10)
+    csv_dataset.load(balance_classes=balance_classes, rows_limit=10)
     dataset_categories = csv_dataset.categories
     feature_names = csv_dataset.features
     num_features = csv_dataset.X.shape[1]
@@ -135,7 +136,9 @@ def load_datasets_from_dir(dataset_dir, label_column: str, rows_per_dataset: int
         csv_dataset = CSVDataset(dataset_path, label_column, chunk_size=3e+6)
         csv_dataset.load(balance_classes=True, rows_limit=rows_per_dataset)
         if as_tensors_list:
-            tensor_datasets.append(TensorDataset(csv_dataset.X, csv_dataset.y))
+            dataset = TensorDataset(csv_dataset.X, csv_dataset.y)
+            tensor_datasets.append(LoadedTensorDataset(dataset, csv_dataset.X.shape[0], csv_dataset.X.shape[1],
+                                                       dataset_categories, feature_names, csv_dataset.X.dtype))
         else:
             if x is None:
                 x, y = csv_dataset.X, csv_dataset.y
