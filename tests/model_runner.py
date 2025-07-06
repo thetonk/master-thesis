@@ -218,6 +218,7 @@ if __name__ == "__main__":
         print("#"*50,f"RUN {i}", "#"*50)
         if zero_shot:
             dataset_loo = LeaveOneOut()
+            show_summary = True
             for fold, (_, testset_idx) in enumerate(dataset_loo.split(dataset_list)):
                 print(f"Using dataset {testset_idx.item()+1} as test!")
                 temp_dataset_list = dataset_list.copy()
@@ -238,7 +239,9 @@ if __name__ == "__main__":
                     model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
                 else:
                     model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
-                torchinfo.summary(model, input_size=(batch_size, num_features))
+                if show_summary:
+                    torchinfo.summary(model, input_size=(batch_size, num_features))
+                    show_summary = False
                 print("STARTING TRAINING SESSION!!!")
                 train_model(model, model_filename, train_loader, None, training_metric, epochs=epochs, device=DEVICE,
                             learning_rate=learning_rate)
