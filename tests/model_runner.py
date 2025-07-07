@@ -32,7 +32,7 @@ def plot_confusion_matrix(confusion_matrix, plot_filename):
     axes.xaxis.set_ticks_position("bottom")
     for i in range(n_classes):
         for j in range(n_classes):
-            axes.text(j, i, confusion_matrix[i, j], ha="center", va="center")
+            axes.text(j, i, int(confusion_matrix[i, j]), ha="center", va="center")
     plt.colorbar(mat)
     fig.tight_layout()
     plt.savefig(plot_filename)
