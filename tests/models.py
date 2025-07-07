@@ -127,6 +127,7 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
         batch_number = len(train_loader)
         #samples = len(train_loader.dataset)
         total_loss = 0
+        loss = 0
         #total_correct = 0
         for data, label in train_loader:
             data = data.to(device)
@@ -147,7 +148,7 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
             save_model = True
         print("="*50)
         print(f"Epoch {epoch+1}/{epochs}. Average train accuracy: {train_accuracy*100:.3f}%, average loss: {train_loss:.5f}, current loss: {loss:.5f}.")
-        if train_tune:
+        if train_tune and val_loader is not None:
             metric.reset()
             for data, label in val_loader:
                 data, label = data.to(device), label.to(device)
@@ -155,6 +156,9 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
                 metric.update(output, label)
             val_accuracy = metric.compute().item()
             tune.report({"train_accuracy": train_accuracy, "val_accuracy": val_accuracy})
+        elif train_tune and val_loader is None:
+            print("Enabled tuning, but no validation loader is set!")
+            tune.report({"train_accuracy": train_accuracy})
         if save_model:
             print("Saved model!")
             torch.save(model.state_dict(), model_filename)

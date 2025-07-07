@@ -5,5 +5,7 @@ __pycache__/
 !tests/logs/*.log
 tests/results/raytune/*/*
 !tests/results/raytune/*/best_config.json
+!tests/results/raytune/*/removed_features_best_config.json
 .idea/
 *.pt
+*.json

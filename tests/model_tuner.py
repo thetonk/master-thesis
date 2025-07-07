@@ -17,7 +17,7 @@ import nevergrad as ng
 import dataset_utils
 from models import MyModel, MyLSTMClassifier, train_model
 
-def prepare_tunable_training(dataset_id, epochs:int, n_features:int, n_classes: int, use_transformer: bool = True, device = "cuda"):
+def prepare_tunable_training(dataset_id, epochs:int, n_features:int, n_classes: int, use_transformer: bool = True, device = torch.device("cuda")):
     def tunable_training(config):
         dataset = ray.get(dataset_id)
         batch_size = config["batch_size"]
@@ -44,6 +44,7 @@ if __name__ == "__main__":
     parser.add_argument("model", choices=("lstm", "transformer"), help="Model type")
     parser.add_argument("dataset_folder", type=str, help="Dataset directory containing CSV files")
     parser.add_argument("label_column", type=str, help="The name of the column to be used as class", default="Label")
+    parser.add_argument("-r", action="store_true", help="Remove network specific features", dest="remove_features")
     args = parser.parse_args()
     if torch.cuda.is_available():
         print("CUDA available! GPU device name is:", torch.cuda.get_device_name())
@@ -57,6 +58,16 @@ if __name__ == "__main__":
     model_name = args.model
     dataset_folder_path = args.dataset_folder
     label_column = args.label_column
+
+    if args.remove_features:
+        dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts"]
+        experiment_name = f"test_raytune_removed_features_{model_name}"
+        best_config_file = "removed_features_best_config.json"
+        
+    else:
+        dropped_columns = ["Timestamp"]
+        experiment_name = f"test_raytune_{model_name}"
+        best_config_file = "best_config.json"
     if model_name.lower() == "lstm":
         use_transformer = False
     if run_mode.lower() == "slurm":
@@ -71,11 +82,15 @@ if __name__ == "__main__":
             tune_resources = {"cpu": 4, "gpu": 0.5}
         else:
             tune_resources = {"cpu": 4, "gpu": 1}
+
     raytune_dir = os.path.realpath(os.path.join("tests", "results", "raytune"))
+    experiment_dir = os.path.join(raytune_dir, experiment_name)
+    best_config_file_path = os.path.join(experiment_dir, best_config_file)
     rows_limit = int(400e+3)
     os.makedirs(raytune_dir, exist_ok=True)
     HELPTEXT = f"Usage: {sys.argv[0]} RUN_MODE MODEL DATASET_FOLDER LABEL_COLUMN"
-    loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_folder_path, label_column, total_rows_limit=rows_limit)
+    loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_folder_path, label_column,
+                                                          drop_columns=dropped_columns, total_rows_limit=rows_limit, balance_classes=True)
     dataset, num_rows, num_features, num_classes = loaded_dataset.dataset, loaded_dataset.num_rows, loaded_dataset.num_features, loaded_dataset.num_classes
     del loaded_dataset
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}")
@@ -103,7 +118,7 @@ if __name__ == "__main__":
                         "batch_size": tune.choice([32, 64, 128, 256]),
                         "hidden_lstm_states": tune.choice([128, 256, 512]),
                         "hidden_mlp_neurons": tune.choice([128, 256, 512, 1024])}
-        inial_config = [{
+        initial_config = [{
             "lr": 0.0001, "batch_size": 64, "hidden_lstm_states": 512, "hidden_mlp_neurons": 1024
         }]
     hyperband = HyperBandScheduler(time_attr="training_iteration", max_t=epochs, reduction_factor=2)
@@ -113,8 +128,6 @@ if __name__ == "__main__":
     tune_with_resources = tune.with_resources(
         prepare_tunable_training(dataset_object_id, epochs, num_features, num_classes, use_transformer, DEVICE), 
         resources=tune_resources)
-    experiment_name = f"test_raytune_{model_name}"
-    experiment_dir = os.path.join(raytune_dir, experiment_name)
     tuner = tune.Tuner(
         tune_with_resources,
         param_space=search_space,
@@ -132,8 +145,7 @@ if __name__ == "__main__":
         )
     )
     result = tuner.fit().get_best_result()
-    best_config_file = os.path.join(experiment_dir, "best_config.json")
-    with open(best_config_file, "w") as f:
+    with open(best_config_file_path, "w") as f:
         json_content = {
             "config": result.config,
             "metrics": result.metrics

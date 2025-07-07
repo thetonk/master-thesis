@@ -38,10 +38,10 @@ else
 fi
 
 if [[ "$run_mode" == "zero_shot" ]]; then
-    python3 -u model_runner.py --zero-shot "$model" -d "$dataset" "$label_column" 1 1 $epochs
+    python3 -u model_runner.py --zero-shot "$model" -d "$dataset" "$label_column" 3 1 $epochs
 elif [[ "$run_mode" == "normal" ]]; then
     python3 -u model_runner.py "$model" -f "$dataset" "$label_column" 10 10 $epochs
 else
-    echo "Invalid run mode "$run_mode"! Valid options are: normal, zero_shot"
+    echo "Invalid run mode $run_mode! Valid options are: normal, zero_shot"
     exit 1
 fi

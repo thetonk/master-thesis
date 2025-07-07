@@ -114,6 +114,7 @@ if __name__ == "__main__":
     parser.add_argument("folds", type=int, help="Number of folds. Must not be negative. Ignored if used with zero-shot.",default=0)
     parser.add_argument("epochs", type=int, help="Number of traininig epochs. Must be larger than 0", default=10)
     parser.add_argument("-z", "--zero-shot", action="store_true", help="Run zero-shot transfer learning")
+    parser.add_argument("-c", "--config", type=str, help="Path to hyperparameter configuration file")
     dataset_args = parser.add_mutually_exclusive_group(required=True)
     dataset_args.add_argument("-f", "--file", type=str, help="Dataset CSV file", dest="dataset_file")
     dataset_args.add_argument("-d", "--directory", type=str, help="Dataset directory containing CSV files", dest="dataset_folder")
@@ -132,12 +133,15 @@ if __name__ == "__main__":
 
     try:
         model_name = args.model
+        config_file = args.config
         raytune_results_dir = os.path.join("tests", "results", "raytune")
         if model_name == "lstm":
             use_transformer = False
-            config_file = os.path.join(raytune_results_dir, "test_raytune_lstm", "best_config.json")
+            if config_file is None:
+                config_file = os.path.join(raytune_results_dir, "test_raytune_lstm", "best_config.json")
         else:
-            config_file = os.path.join(raytune_results_dir, "test_raytune_transformer", "best_config.json")
+            if config_file is None:
+                config_file = os.path.join(raytune_results_dir, "test_raytune_transformer", "best_config.json")
         with open(config_file, "r") as file:
             json_data = json.load(file)
             config = json_data["config"]

@@ -31,10 +31,11 @@ def _prepare_numeric_columns(df: pd.DataFrame, label_column = "Label") -> pd.Dat
 
 
 class CSVDataset():
-    def __init__(self, dataset_path, label_column, feature_columns=FEATURE_COLUMNS, chunk_size=1e+6):
+    def __init__(self, dataset_path, label_column, feature_columns=FEATURE_COLUMNS,
+                 columns_to_drop=["Timestamp"], chunk_size=1e+6):
         self._chunk_size = chunk_size
         self._label_column = label_column.replace("_", " ")
-        self._columns_to_drop = ["Timestamp"]
+        self._columns_to_drop = columns_to_drop
         self.dataset_path = dataset_path
         self.categories = None
         self.X = None
@@ -107,8 +108,8 @@ class LoadedTensorDataset():
         self.dtype = dtype
 
 
-def load_datasets_from_dir(dataset_dir, label_column: str, rows_per_dataset: int = None,
-                           total_rows_limit: int=None, balance_classes: bool= False,
+def load_datasets_from_dir(dataset_dir, label_column: str, drop_columns: list | None = None,
+                           rows_per_dataset: int = None, total_rows_limit: int=None, balance_classes: bool= False,
                            as_tensors_list: bool=False) -> LoadedTensorDataset | list[LoadedTensorDataset]:
     # assume that all datasets have same amount of classes and have same label column and features
     # first pass, discover num of classes and feature names
@@ -120,7 +121,9 @@ def load_datasets_from_dir(dataset_dir, label_column: str, rows_per_dataset: int
     dataset_list.sort(key=lambda filename: os.path.getsize(filename))
     num_datasets = len(dataset_list)
     print("Number of datasets found: ", num_datasets)
-    csv_dataset = CSVDataset(dataset_list[0], label_column, chunk_size=3e+6)
+    if drop_columns is None:
+        drop_columns = ["Timestamp"]
+    csv_dataset = CSVDataset(dataset_list[0], label_column, columns_to_drop=drop_columns, chunk_size=3e+6)
     csv_dataset.load(balance_classes=balance_classes, rows_limit=10)
     dataset_categories = csv_dataset.categories
     feature_names = csv_dataset.features
@@ -133,8 +136,8 @@ def load_datasets_from_dir(dataset_dir, label_column: str, rows_per_dataset: int
     tensor_datasets = []
     for dataset_path in dataset_list:
         print(f"Loading {dataset_path}...")
-        csv_dataset = CSVDataset(dataset_path, label_column, chunk_size=3e+6)
-        csv_dataset.load(balance_classes=True, rows_limit=rows_per_dataset)
+        csv_dataset = CSVDataset(dataset_path, label_column, columns_to_drop=drop_columns, chunk_size=3e+6)
+        csv_dataset.load(balance_classes=balance_classes, rows_limit=rows_per_dataset)
         if as_tensors_list:
             dataset = TensorDataset(csv_dataset.X, csv_dataset.y)
             tensor_datasets.append(LoadedTensorDataset(dataset, csv_dataset.X.shape[0], csv_dataset.X.shape[1],
