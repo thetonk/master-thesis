@@ -10,6 +10,7 @@ from torcheval.metrics import MulticlassAccuracy, MulticlassF1Score, MulticlassC
 from torch.utils.data import TensorDataset, DataLoader, Subset, random_split
 import torchinfo
 from sklearn.model_selection import StratifiedKFold, LeaveOneOut
+import matplotlib
 import matplotlib.pyplot as plt
 import shap
 from shap.plots import bar
@@ -115,6 +116,7 @@ if __name__ == "__main__":
     parser.add_argument("epochs", type=int, help="Number of traininig epochs. Must be larger than 0", default=10)
     parser.add_argument("-z", "--zero-shot", action="store_true", help="Run zero-shot transfer learning")
     parser.add_argument("-c", "--config", type=str, help="Path to hyperparameter configuration file")
+    parser.add_argument("-r", action="store_true", help="Remove network specific features", dest="remove_features")
     dataset_args = parser.add_mutually_exclusive_group(required=True)
     dataset_args.add_argument("-f", "--file", type=str, help="Dataset CSV file", dest="dataset_file")
     dataset_args.add_argument("-d", "--directory", type=str, help="Dataset directory containing CSV files", dest="dataset_folder")
@@ -123,6 +125,7 @@ if __name__ == "__main__":
     load_directory = False
     zero_shot = False
     N_WORKERS = 6
+    matplotlib.use('Agg')
 
     if torch.cuda.is_available():
         print("CUDA available! GPU device name is:", torch.cuda.get_device_name())
@@ -162,6 +165,10 @@ if __name__ == "__main__":
         zero_shot = args.zero_shot
         if folds < 0 or epochs < 1 or num_runs < 1:
             raise ValueError("Please specify valid number of folds and epochs")
+        if args.remove_features:
+            dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts"]
+        else:
+            dropped_columns = ["Timestamp"]
     except ValueError as e:
         print(e, file=sys.stderr)
         parser.print_help()
@@ -176,7 +183,7 @@ if __name__ == "__main__":
     if not load_directory:
         dataset_name = os.path.basename(dataset_file).split(".")[0]
         model_filename = os.path.join("trained_models", f"best_model_{model_name}_{dataset_name}.pt")
-        csv_dataset = dataset_utils.CSVDataset(dataset_file, label_column, chunk_size=3e+6)
+        csv_dataset = dataset_utils.CSVDataset(dataset_file, label_column, columns_to_drop=dropped_columns, chunk_size=3e+6)
         csv_dataset.load(balance_classes=True, rows_limit=250e+3)
         X, y, category_map, feature_names = csv_dataset.X, csv_dataset.y, csv_dataset.categories, csv_dataset.features
         num_classes = len(category_map)
@@ -193,7 +200,7 @@ if __name__ == "__main__":
         if zero_shot:
             print("Running in zero-shot mode!")
             dataset_list = dataset_utils.load_datasets_from_dir(dataset_folder, label_column, rows_per_dataset=rows_per_dataset,
-                                                                balance_classes=True, as_tensors_list=True)
+                                                                drop_columns=dropped_columns, balance_classes=True, as_tensors_list=True)
             num_rows = sum([dataset.num_rows for dataset in dataset_list])
             num_classes = dataset_list[0].num_classes
             num_features = dataset_list[0].num_features
@@ -202,7 +209,7 @@ if __name__ == "__main__":
             datatype = dataset_list[0].dtype
         else:
             loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_folder, label_column, rows_per_dataset=rows_per_dataset,
-                                                                  balance_classes=True)
+                                                                  drop_columns=dropped_columns, balance_classes=True)
             dataset = loaded_dataset.dataset
             num_features = loaded_dataset.num_features
             num_rows = loaded_dataset.num_rows
@@ -217,6 +224,7 @@ if __name__ == "__main__":
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}, datatype: {datatype}")
     metric_names = ["Run #","Fold #","Class", "Accuracy", "Precision", "Recall", "F1 Score"]
     df_list = []
+    validation_df_list = [] #needed for zero shot transfer learning, otherwise is unused
     training_metric = MulticlassAccuracy(average='macro', num_classes=num_classes, device=DEVICE)
     for i in range(num_runs):
         print("#"*50,f"RUN {i}", "#"*50)
@@ -236,9 +244,12 @@ if __name__ == "__main__":
                 del train_dataset_list
                 train_dataset = TensorDataset(X, y)
                 del X, y
+                train_dataset, validation_dataset = random_split(train_dataset, [0.8, 0.2])
                 train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=N_WORKERS)
+                validation_loader = DataLoader(validation_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
                 test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
-                metrics = prepare_test_metrics(num_classes)
+                test_metrics = prepare_test_metrics(num_classes)
+                validation_metrics = prepare_test_metrics(num_classes)
                 if use_transformer:
                     model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
                 else:
@@ -256,14 +267,22 @@ if __name__ == "__main__":
                     final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
                 final_model.load_state_dict(torch.load(model_filename, weights_only=False))
                 multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = test_model(
-                    final_model, test_loader, metrics, device=DEVICE)
+                    final_model, test_loader, test_metrics, device=DEVICE)
                 metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i + 1] * num_classes, [fold+1] * num_classes,
                                                                             category_map.values(), multiclass_accuracy,
                                                                             multiclass_precision, multiclass_recall,
                                                                             multiclass_f1_score])))
-                del train_loader, test_loader
+                val_multiclass_accuracy, val_multiclass_precision, val_multiclass_recall, val_multiclass_f1_score, _ = test_model(
+                    final_model, validation_loader, validation_metrics, device=DEVICE)
+                validation_metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i + 1] * num_classes, [fold+1] * num_classes,
+                                                                            category_map.values(), val_multiclass_accuracy,
+                                                                            val_multiclass_precision, val_multiclass_recall,
+                                                                            val_multiclass_f1_score])))
+                del train_loader, test_loader, validation_loader
                 df_list.append(metrics_df)
-                print("Metrics:\n", metrics_df, sep='')
+                validation_df_list.append(validation_metrics_df)
+                print("Validation Metrics:\n", validation_metrics_df, sep='')
+                print("Test Metrics:\n", metrics_df, sep='')
                 plot_confusion_matrix(multiclass_confusion_matrix, os.path.join(images_dir, f"confusion_matrix_{model_name}_{dataset_name}_{i+1}_{fold+1}_TL.png"))
                 plot_shap_values(final_model, test_dataset, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}_{fold+1}_TL.png"))
         else:
@@ -338,3 +357,6 @@ if __name__ == "__main__":
             plot_shap_values(final_model, dataset, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}.png"))
     results_df = pd.concat(df_list)
     results_df.to_csv(os.path.join(results_dir, f"results_{model_name}_{dataset_name}.csv"))
+    if zero_shot:
+        validation_results_df = pd.concat(validation_df_list)
+        validation_results_df.to_csv(os.path.join(results_dir, f"validation_results_{model_name}_{dataset_name}_TL.csv"))

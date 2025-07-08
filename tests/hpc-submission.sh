@@ -14,8 +14,8 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=mspyrido@ece.auth.gr
 
-if [[ $# -lt 4 ]]; then
-    echo "Usage: $0 <run_mode> <model> <dataset> <label_column>"
+if [[ $# -lt 5 ]]; then
+    echo "Usage: $0 <run_mode> <config-file> <model> <dataset> <label_column>"
     exit 1
 fi
 
@@ -25,9 +25,10 @@ cd ~/thesis-task
 source .venv/bin/activate
 
 run_mode="$1"
-model="$2"
-dataset="$3"
-label_column="$4"
+config_file="$2"
+model="$3"
+dataset="$4"
+label_column="$5"
 
 shopt -s nocasematch
 
@@ -38,10 +39,14 @@ else
 fi
 
 if [[ "$run_mode" == "zero_shot" ]]; then
-    python3 -u model_runner.py --zero-shot "$model" -d "$dataset" "$label_column" 3 1 $epochs
+    python3 -u model_runner.py -c "$config_file" --zero-shot "$model" -d "$dataset" "$label_column" 3 1 $epochs
+elif [[ "$run_mode" == "zero_shot_remove_features" ]]; then
+    python3 -u model_runner.py -c "$config_file" -r --zero-shot "$model" -d "$dataset" "$label_column" 3 1 $epochs
 elif [[ "$run_mode" == "normal" ]]; then
-    python3 -u model_runner.py "$model" -f "$dataset" "$label_column" 10 10 $epochs
+    python3 -u model_runner.py -c "$config_file" "$model" -f "$dataset" "$label_column" 10 10 $epochs
+elif [[ "$run_mode" == "normal_remove_features" ]]; then
+    python3 -u model_runner.py -c "$config_file" -r "$model" -f "$dataset" "$label_column" 10 10 $epochs
 else
-    echo "Invalid run mode $run_mode! Valid options are: normal, zero_shot"
+    echo "Invalid run mode $run_mode! Valid options are: normal, normal_remove_features, zero_shot, zero_shot_remove_features"
     exit 1
 fi
