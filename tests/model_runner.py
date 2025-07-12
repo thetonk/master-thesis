@@ -166,9 +166,13 @@ if __name__ == "__main__":
         if folds < 0 or epochs < 1 or num_runs < 1:
             raise ValueError("Please specify valid number of folds and epochs")
         if args.remove_features:
+            #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
+            #                   "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
             dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts"]
         else:
             dropped_columns = ["Timestamp"]
+        print("The following features will be ignored:")
+        print(*dropped_columns, sep=',')
     except ValueError as e:
         print(e, file=sys.stderr)
         parser.print_help()
@@ -220,6 +224,8 @@ if __name__ == "__main__":
             X = dataset.tensors[0]
             y = dataset.tensors[1]
         dataset_name = "TL"
+    if args.remove_features:
+        dataset_name += "_removed"
 
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}, datatype: {datatype}")
     metric_names = ["Run #","Fold #","Class", "Accuracy", "Precision", "Recall", "F1 Score"]
@@ -239,8 +245,8 @@ if __name__ == "__main__":
                 X = train_dataset_list[0].dataset.tensors[0]
                 y = train_dataset_list[0].dataset.tensors[1]
                 for j in range(1, len(train_dataset_list)):
-                    X = torch.cat((X, train_dataset_list[i].dataset.tensors[0]), dim=0)
-                    y = torch.cat((y, train_dataset_list[i].dataset.tensors[1]), dim=0)
+                    X = torch.cat((X, train_dataset_list[j].dataset.tensors[0]), dim=0)
+                    y = torch.cat((y, train_dataset_list[j].dataset.tensors[1]), dim=0)
                 del train_dataset_list
                 train_dataset = TensorDataset(X, y)
                 del X, y
@@ -265,7 +271,7 @@ if __name__ == "__main__":
                     final_model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
                 else:
                     final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
-                final_model.load_state_dict(torch.load(model_filename, weights_only=False))
+                final_model.load_state_dict(torch.load(model_filename, weights_only=True))
                 multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = test_model(
                     final_model, test_loader, test_metrics, device=DEVICE)
                 metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i + 1] * num_classes, [fold+1] * num_classes,
@@ -305,7 +311,7 @@ if __name__ == "__main__":
                     final_model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
                 else:
                     final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
-                final_model.load_state_dict(torch.load(model_filename, weights_only=False))
+                final_model.load_state_dict(torch.load(model_filename, weights_only=True))
                 multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
                 metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1]*num_classes, [1]*num_classes, category_map.values(),
                                                                             multiclass_accuracy,multiclass_precision,
@@ -342,7 +348,7 @@ if __name__ == "__main__":
                         final_model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
                     else:
                         final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
-                    final_model.load_state_dict(torch.load(model_filename, weights_only=False))
+                    final_model.load_state_dict(torch.load(model_filename, weights_only=True))
                     multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, fold_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
                     multiclass_confusion_matrix += fold_confusion_matrix.astype(np.uint64)
                     metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1]*num_classes, [fold+1]*num_classes, category_map.values(),

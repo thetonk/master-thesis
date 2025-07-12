@@ -134,8 +134,8 @@ def load_datasets_from_dir(dataset_dir, label_column: str, drop_columns: list | 
     x = None
     y = None
     tensor_datasets = []
-    for dataset_path in dataset_list:
-        print(f"Loading {dataset_path}...")
+    for i, dataset_path in enumerate(dataset_list):
+        print(f"Loading dataset {i+1} ({dataset_path})...")
         csv_dataset = CSVDataset(dataset_path, label_column, columns_to_drop=drop_columns, chunk_size=3e+6)
         csv_dataset.load(balance_classes=balance_classes, rows_limit=rows_per_dataset)
         if as_tensors_list:

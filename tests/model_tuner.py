@@ -60,6 +60,8 @@ if __name__ == "__main__":
     label_column = args.label_column
 
     if args.remove_features:
+        #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
+        #                    "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
         dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts"]
         experiment_name = f"test_raytune_removed_features_{model_name}"
         best_config_file = "removed_features_best_config.json"
@@ -68,6 +70,10 @@ if __name__ == "__main__":
         dropped_columns = ["Timestamp"]
         experiment_name = f"test_raytune_{model_name}"
         best_config_file = "best_config.json"
+
+    print("The following features will be ignored:")
+    print(*dropped_columns, sep=',')
+
     if model_name.lower() == "lstm":
         use_transformer = False
     if run_mode.lower() == "slurm":
