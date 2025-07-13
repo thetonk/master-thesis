@@ -114,12 +114,15 @@ if __name__ == "__main__":
     parser.add_argument("runs", type=int, help="Number of runs. Must not be 0", default=1)
     parser.add_argument("folds", type=int, help="Number of folds. Must not be negative. Ignored if used with zero-shot.",default=0)
     parser.add_argument("epochs", type=int, help="Number of traininig epochs. Must be larger than 0", default=10)
-    parser.add_argument("-z", "--zero-shot", action="store_true", help="Run zero-shot transfer learning")
+    #parser.add_argument("-z", "--zero-shot", action="store_true", help="Run zero-shot transfer learning")
     parser.add_argument("-c", "--config", type=str, help="Path to hyperparameter configuration file")
     parser.add_argument("-r", action="store_true", help="Remove network specific features", dest="remove_features")
     dataset_args = parser.add_mutually_exclusive_group(required=True)
     dataset_args.add_argument("-f", "--file", type=str, help="Dataset CSV file", dest="dataset_file")
     dataset_args.add_argument("-d", "--directory", type=str, help="Dataset directory containing CSV files", dest="dataset_folder")
+    shot_args = parser.add_mutually_exclusive_group(required=False)
+    shot_args.add_argument("-z", "--zero-shot", action="store_true", help="Run zero-shot transfer learning")
+    shot_args.add_argument("-fs", "--few-shot", type=int, metavar="SAMPLES_PER_CLASS", help="Run few-shot transfer learning with the specified samples per class")
     args = parser.parse_args()
     use_transformer = True
     load_directory = False
@@ -151,8 +154,8 @@ if __name__ == "__main__":
         learning_rate = config.pop("lr")
         batch_size = config.pop("batch_size")
         model_hyperparameters = config
-        if args.zero_shot and args.dataset_folder is None:
-            raise ValueError("Zero shot transfer learning requires a directory that contains datasets!")
+        if (args.zero_shot or args.few_shot) and args.dataset_folder is None:
+            raise ValueError("Transfer learning requires a directory that contains datasets!")
         if args.dataset_folder is None:
             dataset_file = args.dataset_file
         else:
@@ -163,6 +166,10 @@ if __name__ == "__main__":
         folds = args.folds
         epochs = args.epochs
         zero_shot = args.zero_shot
+        few_shot = bool(args.few_shot)
+        few_shot_samples_per_class = args.few_shot
+        if few_shot_samples_per_class is not None and few_shot_samples_per_class <= 0:
+            raise ValueError("Invalid samples per class! Must be positive")
         if folds < 0 or epochs < 1 or num_runs < 1:
             raise ValueError("Please specify valid number of folds and epochs")
         if args.remove_features:
@@ -201,8 +208,8 @@ if __name__ == "__main__":
     else:
         model_filename = os.path.join("trained_models", f"best_model_{model_name}_TL.pt")
         rows_per_dataset = 77140
-        if zero_shot:
-            print("Running in zero-shot mode!")
+        if zero_shot or few_shot:
+            print(f"Running in {'zero-shot' if zero_shot else 'few-shot'} mode!")
             dataset_list = dataset_utils.load_datasets_from_dir(dataset_folder, label_column, rows_per_dataset=rows_per_dataset,
                                                                 drop_columns=dropped_columns, balance_classes=True, as_tensors_list=True)
             num_rows = sum([dataset.num_rows for dataset in dataset_list])
@@ -234,7 +241,7 @@ if __name__ == "__main__":
     training_metric = MulticlassAccuracy(average='macro', num_classes=num_classes, device=DEVICE)
     for i in range(num_runs):
         print("#"*50,f"RUN {i}", "#"*50)
-        if zero_shot:
+        if zero_shot or few_shot:
             dataset_loo = LeaveOneOut()
             show_summary = True
             for fold, (_, testset_idx) in enumerate(dataset_loo.split(dataset_list)):
@@ -248,7 +255,11 @@ if __name__ == "__main__":
                     X = torch.cat((X, train_dataset_list[j].dataset.tensors[0]), dim=0)
                     y = torch.cat((y, train_dataset_list[j].dataset.tensors[1]), dim=0)
                 del train_dataset_list
-                train_dataset = TensorDataset(X, y)
+                if zero_shot:
+                    train_dataset = TensorDataset(X, y)
+                else:
+                    # TODO: implement few-shot transfer learning using random_split on test dataset
+                    pass
                 del X, y
                 train_dataset, validation_dataset = random_split(train_dataset, [0.8, 0.2])
                 train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=N_WORKERS)
