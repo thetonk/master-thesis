@@ -128,7 +128,7 @@ if __name__ == "__main__":
     load_directory = False
     zero_shot = False
     N_WORKERS = 6
-    matplotlib.use('Agg')
+    matplotlib.use('Agg') # Use Agg engine for headless operation
 
     if torch.cuda.is_available():
         print("CUDA available! GPU device name is:", torch.cuda.get_device_name())
@@ -237,7 +237,8 @@ if __name__ == "__main__":
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}, datatype: {datatype}")
     metric_names = ["Run #","Fold #","Class", "Accuracy", "Precision", "Recall", "F1 Score"]
     df_list = []
-    validation_df_list = [] #needed for zero shot transfer learning, otherwise is unused
+    validation_df_list = [] #needed for zero/few shot transfer learning, otherwise is unused
+    tl_type = None #needed for zero/fwe shot transfer learning as well
     training_metric = MulticlassAccuracy(average='macro', num_classes=num_classes, device=DEVICE)
     for i in range(num_runs):
         print("#"*50,f"RUN {i}", "#"*50)
@@ -255,11 +256,16 @@ if __name__ == "__main__":
                     X = torch.cat((X, train_dataset_list[j].dataset.tensors[0]), dim=0)
                     y = torch.cat((y, train_dataset_list[j].dataset.tensors[1]), dim=0)
                 del train_dataset_list
-                if zero_shot:
+                train_dataset = TensorDataset(X, y)
+                if few_shot:
+                    few_shot_samples = num_classes * few_shot_samples_per_class
+                    initial_test_dataset = test_dataset
+                    infused_dataset, test_dataset = random_split(initial_test_dataset, [few_shot_samples, initial_test_dataset.tensors[0].shape[0] - few_shot_samples])
+                    X = torch.cat((X, initial_test_dataset.tensors[0][infused_dataset.indices]), dim=0)
+                    y = torch.cat((y, initial_test_dataset.tensors[1][infused_dataset.indices]), dim=0)
+                    print(f"Final # of rows after infusion: {X.shape[0]}")
                     train_dataset = TensorDataset(X, y)
-                else:
-                    # TODO: implement few-shot transfer learning using random_split on test dataset
-                    pass
+                    del initial_test_dataset
                 del X, y
                 train_dataset, validation_dataset = random_split(train_dataset, [0.8, 0.2])
                 train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=N_WORKERS)
@@ -300,8 +306,11 @@ if __name__ == "__main__":
                 validation_df_list.append(validation_metrics_df)
                 print("Validation Metrics:\n", validation_metrics_df, sep='')
                 print("Test Metrics:\n", metrics_df, sep='')
-                plot_confusion_matrix(multiclass_confusion_matrix, os.path.join(images_dir, f"confusion_matrix_{model_name}_{dataset_name}_{i+1}_{fold+1}_TL.png"))
-                plot_shap_values(final_model, test_dataset, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}_{fold+1}_TL.png"))
+                tl_type = f"{'zero_shot' if zero_shot else 'few_shot'}"
+                confusion_matrix_filename = f"confusion_matrix_{model_name}_{dataset_name}_{i+1}_{fold+1}_{tl_type}.png"
+                shap_values_filename = f"shap_values_{model_name}_{dataset_name}_{i+1}_{fold+1}_{tl_type}.png"
+                plot_confusion_matrix(multiclass_confusion_matrix, os.path.join(images_dir, confusion_matrix_filename))
+                plot_shap_values(final_model, test_dataset, num_classes, feature_names, os.path.join(images_dir, shap_values_filename))
         else:
             if folds == 0:
                 print("Training and testing model with a random split of 80% train and 20% test!")
@@ -373,7 +382,9 @@ if __name__ == "__main__":
             plot_confusion_matrix(multiclass_confusion_matrix, os.path.join(images_dir, f"confusion_matrix_{model_name}_{dataset_name}_{i+1}.png"))
             plot_shap_values(final_model, dataset, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}.png"))
     results_df = pd.concat(df_list)
-    results_df.to_csv(os.path.join(results_dir, f"results_{model_name}_{dataset_name}.csv"))
-    if zero_shot:
+    if zero_shot or few_shot:
         validation_results_df = pd.concat(validation_df_list)
-        validation_results_df.to_csv(os.path.join(results_dir, f"validation_results_{model_name}_{dataset_name}_TL.csv"))
+        validation_results_df.to_csv(os.path.join(results_dir, f"validation_results_{model_name}_{dataset_name}_{tl_type}.csv"))
+        results_df.to_csv(os.path.join(results_dir, f"results_{model_name}_{dataset_name}_{tl_type}.csv"))
+    else:
+        results_df.to_csv(os.path.join(results_dir, f"results_{model_name}_{dataset_name}.csv"))
