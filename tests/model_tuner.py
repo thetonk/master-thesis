@@ -14,8 +14,9 @@ from ray.tune.schedulers import HyperBandScheduler
 #from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search.nevergrad import NevergradSearch
 import nevergrad as ng
-import dataset_utils
-from models import MyModel, MyLSTMClassifier, train_model
+from utils import dataset_utils
+from utils.train_utils import train_model
+from models import MyModel, MyLSTMClassifier
 
 def prepare_tunable_training(dataset_id, epochs:int, n_features:int, n_classes: int, use_transformer: bool = True, device = torch.device("cuda")):
     def tunable_training(config):

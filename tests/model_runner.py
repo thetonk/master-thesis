@@ -14,8 +14,9 @@ import matplotlib
 import matplotlib.pyplot as plt
 import shap
 from shap.plots import bar
-import dataset_utils
-from models import MyModel, MyLSTMClassifier, train_model, test_model
+from utils import dataset_utils
+from utils.train_utils import train_model, test_model
+from models import MyModel, MyLSTMClassifier
 
 
 #SEED = 42
@@ -237,7 +238,7 @@ if __name__ == "__main__":
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}, datatype: {datatype}")
     metric_names = ["Run #","Fold #","Class", "Accuracy", "Precision", "Recall", "F1 Score"]
     df_list = []
-    validation_df_list = [] #needed for zero/few shot transfer learning, otherwise is unused
+    local_test_df_list = [] #needed for zero/few shot transfer learning, otherwise is unused
     tl_type = None #needed for zero/fwe shot transfer learning as well
     training_metric = MulticlassAccuracy(average='macro', num_classes=num_classes, device=DEVICE)
     for i in range(num_runs):
@@ -267,12 +268,12 @@ if __name__ == "__main__":
                     train_dataset = TensorDataset(X, y)
                     del initial_test_dataset
                 del X, y
-                train_dataset, validation_dataset = random_split(train_dataset, [0.8, 0.2])
+                train_dataset, local_test_dataset = random_split(train_dataset, [0.8, 0.2])
                 train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=N_WORKERS)
-                validation_loader = DataLoader(validation_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
+                local_test_loader = DataLoader(local_test_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
                 test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
                 test_metrics = prepare_test_metrics(num_classes)
-                validation_metrics = prepare_test_metrics(num_classes)
+                local_test_metrics = prepare_test_metrics(num_classes)
                 if use_transformer:
                     model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
                 else:
@@ -295,17 +296,17 @@ if __name__ == "__main__":
                                                                             category_map.values(), multiclass_accuracy,
                                                                             multiclass_precision, multiclass_recall,
                                                                             multiclass_f1_score])))
-                val_multiclass_accuracy, val_multiclass_precision, val_multiclass_recall, val_multiclass_f1_score, _ = test_model(
-                    final_model, validation_loader, validation_metrics, device=DEVICE)
-                validation_metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i + 1] * num_classes, [fold+1] * num_classes,
-                                                                            category_map.values(), val_multiclass_accuracy,
-                                                                            val_multiclass_precision, val_multiclass_recall,
-                                                                            val_multiclass_f1_score])))
-                del train_loader, test_loader, validation_loader
+                local_test_multiclass_accuracy, local_test_multiclass_precision, local_test_multiclass_recall, local_test_multiclass_f1_score, _ = test_model(
+                    final_model, local_test_loader, local_test_metrics, device=DEVICE)
+                local_test_metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i + 1] * num_classes, [fold+1] * num_classes,
+                                                                            category_map.values(), local_test_multiclass_accuracy,
+                                                                            local_test_multiclass_precision, local_test_multiclass_recall,
+                                                                            local_test_multiclass_f1_score])))
+                del train_loader, test_loader, local_test_loader
                 df_list.append(metrics_df)
-                validation_df_list.append(validation_metrics_df)
-                print("Validation Metrics:\n", validation_metrics_df, sep='')
-                print("Test Metrics:\n", metrics_df, sep='')
+                local_test_df_list.append(local_test_metrics_df)
+                print("Local Test Metrics:\n", local_test_metrics_df, sep='')
+                print("Generalization Test Metrics:\n", metrics_df, sep='')
                 tl_type = f"{'zero_shot' if zero_shot else 'few_shot'}"
                 confusion_matrix_filename = f"confusion_matrix_{model_name}_{dataset_name}_{i+1}_{fold+1}_{tl_type}.png"
                 shap_values_filename = f"shap_values_{model_name}_{dataset_name}_{i+1}_{fold+1}_{tl_type}.png"
@@ -383,8 +384,8 @@ if __name__ == "__main__":
             plot_shap_values(final_model, dataset, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}.png"))
     results_df = pd.concat(df_list)
     if zero_shot or few_shot:
-        validation_results_df = pd.concat(validation_df_list)
-        validation_results_df.to_csv(os.path.join(results_dir, f"validation_results_{model_name}_{dataset_name}_{tl_type}.csv"))
+        local_test_results_df = pd.concat(local_test_df_list)
+        local_test_results_df.to_csv(os.path.join(results_dir, f"validation_results_{model_name}_{dataset_name}_{tl_type}.csv"))
         results_df.to_csv(os.path.join(results_dir, f"results_{model_name}_{dataset_name}_{tl_type}.csv"))
     else:
         results_df.to_csv(os.path.join(results_dir, f"results_{model_name}_{dataset_name}.csv"))
