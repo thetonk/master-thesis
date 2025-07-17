@@ -146,9 +146,11 @@ if __name__ == "__main__":
             use_transformer = False
             if config_file is None:
                 config_file = os.path.join(raytune_results_dir, "test_raytune_lstm", "best_config.json")
+                print(f"Config file not specified! Defaulting to {config_file}!")
         else:
             if config_file is None:
                 config_file = os.path.join(raytune_results_dir, "test_raytune_transformer", "best_config.json")
+                print(f"Config file not specified! Defaulting to {config_file}!")
         with open(config_file, "r") as file:
             json_data = json.load(file)
             config = json_data["config"]
@@ -176,7 +178,9 @@ if __name__ == "__main__":
         if args.remove_features:
             #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
             #                   "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
-            dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts"]
+            #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts"]
+            dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
+                               "Idle Mean", "Idle Min", "Idle Max"]
         else:
             dropped_columns = ["Timestamp"]
         print("The following features will be ignored:")
@@ -191,10 +195,11 @@ if __name__ == "__main__":
     images_dir = os.path.join(results_dir, "images")
     os.makedirs(trained_models_dir, exist_ok=True)
     os.makedirs(images_dir, exist_ok=True)
+    tl_type = None #needed for zero/few shot transfer learning as well
 
     if not load_directory:
         dataset_name = os.path.basename(dataset_file).split(".")[0]
-        model_filename = os.path.join("trained_models", f"best_model_{model_name}_{dataset_name}.pt")
+        model_file = f"best_model_{model_name}_{dataset_name}"
         csv_dataset = dataset_utils.CSVDataset(dataset_file, label_column, columns_to_drop=dropped_columns, chunk_size=3e+6)
         csv_dataset.load(balance_classes=True, rows_limit=250e+3)
         X, y, category_map, feature_names = csv_dataset.X, csv_dataset.y, csv_dataset.categories, csv_dataset.features
@@ -207,7 +212,8 @@ if __name__ == "__main__":
         num_rows = X.shape[0]
         datatype = X.dtype
     else:
-        model_filename = os.path.join("trained_models", f"best_model_{model_name}_TL.pt")
+        tl_type = f"{'zero_shot' if zero_shot else 'few_shot'}"
+        model_file = f"best_model_{model_name}_{tl_type}_TL"
         rows_per_dataset = 77140
         if zero_shot or few_shot:
             print(f"Running in {'zero-shot' if zero_shot else 'few-shot'} mode!")
@@ -234,12 +240,13 @@ if __name__ == "__main__":
         dataset_name = "TL"
     if args.remove_features:
         dataset_name += "_removed"
+        model_file += "_removed"
 
+    model_filename = os.path.join("trained_models", f"{model_file}.pt")
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}, datatype: {datatype}")
     metric_names = ["Run #","Fold #","Class", "Accuracy", "Precision", "Recall", "F1 Score"]
     df_list = []
     local_test_df_list = [] #needed for zero/few shot transfer learning, otherwise is unused
-    tl_type = None #needed for zero/fwe shot transfer learning as well
     training_metric = MulticlassAccuracy(average='macro', num_classes=num_classes, device=DEVICE)
     for i in range(num_runs):
         print("#"*50,f"RUN {i}", "#"*50)
@@ -307,7 +314,6 @@ if __name__ == "__main__":
                 local_test_df_list.append(local_test_metrics_df)
                 print("Local Test Metrics:\n", local_test_metrics_df, sep='')
                 print("Generalization Test Metrics:\n", metrics_df, sep='')
-                tl_type = f"{'zero_shot' if zero_shot else 'few_shot'}"
                 confusion_matrix_filename = f"confusion_matrix_{model_name}_{dataset_name}_{i+1}_{fold+1}_{tl_type}.png"
                 shap_values_filename = f"shap_values_{model_name}_{dataset_name}_{i+1}_{fold+1}_{tl_type}.png"
                 plot_confusion_matrix(multiclass_confusion_matrix, os.path.join(images_dir, confusion_matrix_filename))

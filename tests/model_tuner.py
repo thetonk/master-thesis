@@ -63,7 +63,9 @@ if __name__ == "__main__":
     if args.remove_features:
         #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
         #                    "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
-        dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts"]
+        #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts"]
+        dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
+                           "Idle Mean", "Idle Min", "Idle Max"]
         experiment_name = f"test_raytune_removed_features_{model_name}"
         best_config_file = "removed_features_best_config.json"
         
@@ -101,7 +103,7 @@ if __name__ == "__main__":
     dataset, num_rows, num_features, num_classes = loaded_dataset.dataset, loaded_dataset.num_rows, loaded_dataset.num_features, loaded_dataset.num_classes
     del loaded_dataset
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}")
-    epochs = 10 if use_transformer else 5
+    epochs = 15 if use_transformer else 5
     num_samples = 300 if use_transformer else 100
     if use_slurm:
         ray.init(include_dashboard=False, address=os.getenv("TUNER_HEAD_IP_ADDRESS"), _redis_password=os.getenv("TUNER_REDIS_PASSWORD"))
