@@ -5,107 +5,17 @@ import argparse
 import pandas as pd
 import numpy as np
 import torch
-import torcheval.metrics
-from torcheval.metrics import MulticlassAccuracy, MulticlassF1Score, MulticlassConfusionMatrix, MulticlassPrecision, MulticlassRecall
+from torcheval.metrics import MulticlassAccuracy
 from torch.utils.data import TensorDataset, DataLoader, Subset, random_split
 import torchinfo
 from sklearn.model_selection import StratifiedKFold, LeaveOneOut
 import matplotlib
-import matplotlib.pyplot as plt
-import shap
-from shap.plots import bar
 from utils import dataset_utils
-from utils.train_utils import train_model, test_model
+from utils import train_test_utils as ttutils
 from models import MyModel, MyLSTMClassifier
 
 
 #SEED = 42
-
-def plot_confusion_matrix(confusion_matrix, plot_filename):
-    # Plot last confusion matrix
-    fig, axes = plt.subplots(dpi=500)
-    mat = axes.matshow(confusion_matrix, cmap=plt.cm.Blues)
-    n_classes = confusion_matrix.shape[1]
-    axes.set_title("Confusion matrix")
-    axes.set_xticks(range(n_classes), labels=category_map.values())
-    axes.set_yticks(range(n_classes), labels=category_map.values())
-    axes.set_ylabel("Actual")
-    axes.set_xlabel("Predicted")
-    axes.xaxis.set_ticks_position("bottom")
-    for i in range(n_classes):
-        for j in range(n_classes):
-            axes.text(j, i, int(confusion_matrix[i, j]), ha="center", va="center")
-    plt.colorbar(mat)
-    fig.tight_layout()
-    plt.savefig(plot_filename)
-    plt.close()
-
-
-def plot_shap_values(model, dataset, num_classes, feature_names, plot_filename):
-    # Prepare and plot last SHAP values
-    model = model.to("cpu")
-    model.device = "cpu"
-    shap_batch_loader = DataLoader(dataset, 110, shuffle=True)
-    features, _ = next(iter(shap_batch_loader))
-    features = features.cpu()
-    model.eval()
-    background = features[:100]
-    test_values = features[100:]
-    with torch.no_grad():
-        base_values = model(background).mean(dim=0).numpy()
-    explainer = shap.GradientExplainer(final_model, background)
-    shap_values = explainer.shap_values(test_values)
-    print("base values", base_values)
-    print("features", features.shape[1])
-    print("test values shape", test_values.shape)
-    charts_per_row = 2
-    rows = num_classes // charts_per_row + ((num_classes % charts_per_row) != 0)
-    fig, axes = plt.subplots(rows, charts_per_row, dpi=500, figsize=(charts_per_row * 4, rows * 3))
-    axes = axes.ravel()
-    for i in range(num_classes):
-        # Create Explanation object for class 0 (you can loop for others)
-        shap_explanation = shap.Explanation(
-            values=shap_values[i].T,  # SHAP values for class i
-            base_values=base_values[i],  # base value for class i
-            data=features[100:].numpy(),  # input data
-            feature_names=feature_names
-        )
-        print(f"shap {i} value shape", shap_values[i].shape)
-        bar(shap_explanation, max_display=10, ax=axes[i], show=False)
-        # Explicitly set font size for axis labels
-        axes[i].set_xlabel(axes[i].get_xlabel(), fontsize=3)
-        axes[i].set_ylabel(axes[i].get_ylabel(), fontsize=3)
-        # Set tick label font sizes
-        for tick in axes[i].get_xticklabels():
-            tick.set_fontsize(4)
-        for tick in axes[i].get_yticklabels():
-            tick.set_fontsize(4)
-        for child in axes[i].get_children():
-            if isinstance(child, plt.Text):
-                # This filters the number labels — skip titles, labels etc.
-                if child.get_position()[0] > 0:
-                    child.set_fontsize(3)
-        # Set title font size
-        axes[i].set_title(category_map[i], fontsize=5, pad=4)
-
-    for i in range(num_classes, len(axes)):
-        fig.delaxes(axes[i])
-
-    plt.tight_layout(pad=0.8)
-    plt.savefig(plot_filename)
-    plt.close(fig)
-
-
-def prepare_test_metrics(num_classes: int) -> list[torcheval.metrics.Metric]:
-    multilclass_accuracy_metric = MulticlassAccuracy(average=None, num_classes=num_classes, device=DEVICE)
-    multiclass_f1_metric = MulticlassF1Score(num_classes=num_classes, device=DEVICE, average=None)
-    multiclass_confusion_matrix_metric = MulticlassConfusionMatrix(num_classes=num_classes, device=DEVICE)
-    multiclass_precision_metric = MulticlassPrecision(num_classes=num_classes, average=None, device=DEVICE)
-    multiclass_recall_metric = MulticlassRecall(num_classes=num_classes, average=None, device=DEVICE)
-    metrics = [multilclass_accuracy_metric, multiclass_precision_metric, multiclass_recall_metric, multiclass_f1_metric,
-               multiclass_confusion_matrix_metric]
-    return metrics
-
 
 if __name__ == "__main__":
     #torch.manual_seed(SEED)
@@ -118,6 +28,7 @@ if __name__ == "__main__":
     #parser.add_argument("-z", "--zero-shot", action="store_true", help="Run zero-shot transfer learning")
     parser.add_argument("-c", "--config", type=str, help="Path to hyperparameter configuration file")
     parser.add_argument("-r", action="store_true", help="Remove network specific features", dest="remove_features")
+    parser.add_argument("-e", "--early-stop", action="store_true", help="Use early stopping")
     dataset_args = parser.add_mutually_exclusive_group(required=True)
     dataset_args.add_argument("-f", "--file", type=str, help="Dataset CSV file", dest="dataset_file")
     dataset_args.add_argument("-d", "--directory", type=str, help="Dataset directory containing CSV files", dest="dataset_folder")
@@ -141,6 +52,7 @@ if __name__ == "__main__":
     try:
         model_name = args.model
         config_file = args.config
+        use_early_stop = args.early_stop
         raytune_results_dir = os.path.join("tests", "results", "raytune")
         if model_name == "lstm":
             use_transformer = False
@@ -196,6 +108,8 @@ if __name__ == "__main__":
     os.makedirs(trained_models_dir, exist_ok=True)
     os.makedirs(images_dir, exist_ok=True)
     tl_type = None #needed for zero/few shot transfer learning as well
+    PATIENCE = ttutils.get_patience(epochs) # Needed for early stopping
+    DELTA = 5e-3 # Needed for early stopping
 
     if not load_directory:
         dataset_name = os.path.basename(dataset_file).split(".")[0]
@@ -212,11 +126,11 @@ if __name__ == "__main__":
         num_rows = X.shape[0]
         datatype = X.dtype
     else:
-        tl_type = f"{'zero_shot' if zero_shot else 'few_shot'}"
-        model_file = f"best_model_{model_name}_{tl_type}_TL"
         rows_per_dataset = 77140
         if zero_shot or few_shot:
             print(f"Running in {'zero-shot' if zero_shot else 'few-shot'} mode!")
+            tl_type = f"{'zero_shot' if zero_shot else 'few_shot'}"
+            model_file = f"best_model_{model_name}_{tl_type}_TL"
             dataset_list = dataset_utils.load_datasets_from_dir(dataset_folder, label_column, rows_per_dataset=rows_per_dataset,
                                                                 drop_columns=dropped_columns, balance_classes=True, as_tensors_list=True)
             num_rows = sum([dataset.num_rows for dataset in dataset_list])
@@ -226,6 +140,7 @@ if __name__ == "__main__":
             feature_names = dataset_list[0].feature_names
             datatype = dataset_list[0].dtype
         else:
+            model_file = f"best_model_{model_name}_merged_ds"
             loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_folder, label_column, rows_per_dataset=rows_per_dataset,
                                                                   drop_columns=dropped_columns, balance_classes=True)
             dataset = loaded_dataset.dataset
@@ -275,12 +190,21 @@ if __name__ == "__main__":
                     train_dataset = TensorDataset(X, y)
                     del initial_test_dataset
                 del X, y
-                train_dataset, local_test_dataset = random_split(train_dataset, [0.8, 0.2])
+                val_loader = None
+                val_dataset = None
+                early_stopper = None
+                if use_early_stop:
+                   train_dataset, val_dataset, local_test_dataset = random_split(train_dataset, [0.6, 0.2, 0.2])
+                   early_stopper = ttutils.EarlyStopping(PATIENCE, DELTA)
+                else:
+                    train_dataset, local_test_dataset = random_split(train_dataset, [0.8, 0.2])
                 train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=N_WORKERS)
                 local_test_loader = DataLoader(local_test_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
                 test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
-                test_metrics = prepare_test_metrics(num_classes)
-                local_test_metrics = prepare_test_metrics(num_classes)
+                if val_dataset is not None:
+                    val_loader = DataLoader(val_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
+                test_metrics = ttutils.prepare_test_metrics(num_classes, DEVICE)
+                local_test_metrics = ttutils.prepare_test_metrics(num_classes, DEVICE)
                 if use_transformer:
                     model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
                 else:
@@ -289,21 +213,21 @@ if __name__ == "__main__":
                     torchinfo.summary(model, input_size=(batch_size, num_features))
                     show_summary = False
                 print("STARTING TRAINING SESSION!!!")
-                train_model(model, model_filename, train_loader, None, training_metric, epochs=epochs, device=DEVICE,
-                            learning_rate=learning_rate)
+                ttutils.train_model(model, model_filename, train_loader, val_loader, training_metric, epochs=epochs, device=DEVICE,
+                            learning_rate=learning_rate, early_stopper=early_stopper)
                 print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
                 if use_transformer:
                     final_model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
                 else:
                     final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
                 final_model.load_state_dict(torch.load(model_filename, weights_only=True))
-                multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = test_model(
+                multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = ttutils.test_model(
                     final_model, test_loader, test_metrics, device=DEVICE)
                 metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i + 1] * num_classes, [fold+1] * num_classes,
                                                                             category_map.values(), multiclass_accuracy,
                                                                             multiclass_precision, multiclass_recall,
                                                                             multiclass_f1_score])))
-                local_test_multiclass_accuracy, local_test_multiclass_precision, local_test_multiclass_recall, local_test_multiclass_f1_score, _ = test_model(
+                local_test_multiclass_accuracy, local_test_multiclass_precision, local_test_multiclass_recall, local_test_multiclass_f1_score, _ = ttutils.test_model(
                     final_model, local_test_loader, local_test_metrics, device=DEVICE)
                 local_test_metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i + 1] * num_classes, [fold+1] * num_classes,
                                                                             category_map.values(), local_test_multiclass_accuracy,
@@ -316,30 +240,39 @@ if __name__ == "__main__":
                 print("Generalization Test Metrics:\n", metrics_df, sep='')
                 confusion_matrix_filename = f"confusion_matrix_{model_name}_{dataset_name}_{i+1}_{fold+1}_{tl_type}.png"
                 shap_values_filename = f"shap_values_{model_name}_{dataset_name}_{i+1}_{fold+1}_{tl_type}.png"
-                plot_confusion_matrix(multiclass_confusion_matrix, os.path.join(images_dir, confusion_matrix_filename))
-                plot_shap_values(final_model, test_dataset, num_classes, feature_names, os.path.join(images_dir, shap_values_filename))
+                ttutils.plot_confusion_matrix(multiclass_confusion_matrix, category_map, os.path.join(images_dir, confusion_matrix_filename))
+                ttutils.plot_shap_values(final_model, test_dataset, category_map, num_classes, feature_names, os.path.join(images_dir, shap_values_filename))
         else:
             if folds == 0:
                 print("Training and testing model with a random split of 80% train and 20% test!")
-                metrics = prepare_test_metrics(num_classes)
+                metrics = ttutils.prepare_test_metrics(num_classes, DEVICE)
                 if use_transformer:
                     model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
                 else:
                     model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
                 torchinfo.summary(model, input_size=(batch_size, num_features))
-                train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
+                val_loader = None
+                val_dataset = None
+                early_stopper = None
+                if use_early_stop:
+                    train_dataset, val_dataset, test_dataset = random_split(dataset, [0.6, 0.2, 0.2])
+                    early_stopper = ttutils.EarlyStopping(PATIENCE, DELTA)
+                else:
+                    train_dataset, test_dataset = random_split(dataset, [0.8, 0.2])
                 train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=N_WORKERS)
                 test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
+                if val_dataset is not None:
+                    val_loader = DataLoader(val_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
                 print("STARTING TRAINING SESSION!!!")
-                train_model(model, model_filename, train_loader, None, training_metric, epochs=epochs,
-                            device=DEVICE, learning_rate=learning_rate)
+                ttutils.train_model(model, model_filename, train_loader, val_loader, training_metric, epochs=epochs,
+                            device=DEVICE, learning_rate=learning_rate, early_stopper=early_stopper)
                 print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
                 if use_transformer:
                     final_model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
                 else:
                     final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
                 final_model.load_state_dict(torch.load(model_filename, weights_only=True))
-                multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
+                multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = ttutils.test_model(final_model, test_loader, metrics, device=DEVICE)
                 metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1]*num_classes, [1]*num_classes, category_map.values(),
                                                                             multiclass_accuracy,multiclass_precision,
                                                                             multiclass_recall, multiclass_f1_score])))
@@ -353,7 +286,7 @@ if __name__ == "__main__":
                 show_summary = True
                 multiclass_confusion_matrix = np.zeros(shape=(num_classes, num_classes), dtype=np.uint64)
                 for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
-                    metrics = prepare_test_metrics(num_classes)
+                    metrics = ttutils.prepare_test_metrics(num_classes, DEVICE)
                     if use_transformer:
                         model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
                     else:
@@ -363,20 +296,28 @@ if __name__ == "__main__":
                         show_summary = False
                     print("-"*50)
                     print(f"Fold {fold+1}/{folds}")
+                    val_loader = None
+                    val_dataset = None
+                    early_stopper = None
                     train_dataset = Subset(dataset, train_index)
+                    if use_early_stop:
+                        train_dataset, val_dataset = random_split(train_dataset, [0.8, 0.2])
+                        early_stopper = ttutils.EarlyStopping(PATIENCE, DELTA)
                     test_dataset = Subset(dataset, test_index)
                     train_loader = DataLoader(train_dataset, batch_size, shuffle=True, pin_memory=True, num_workers=N_WORKERS)
                     test_loader = DataLoader(test_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
+                    if val_dataset is not None:
+                        val_loader = DataLoader(val_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
                     print("STARTING TRAINING SESSION!!!")
-                    train_model(model, model_filename, train_loader, None, metric=training_metric, epochs=epochs,
-                                device=DEVICE, learning_rate=learning_rate)
+                    ttutils.train_model(model, model_filename, train_loader, val_loader, metric=training_metric, epochs=epochs,
+                                device=DEVICE, learning_rate=learning_rate, early_stopper=early_stopper)
                     print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
                     if use_transformer:
                         final_model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
                     else:
                         final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
                     final_model.load_state_dict(torch.load(model_filename, weights_only=True))
-                    multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, fold_confusion_matrix = test_model(final_model, test_loader, metrics, device=DEVICE)
+                    multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, fold_confusion_matrix = ttutils.test_model(final_model, test_loader, metrics, device=DEVICE)
                     multiclass_confusion_matrix += fold_confusion_matrix.astype(np.uint64)
                     metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1]*num_classes, [fold+1]*num_classes, category_map.values(),
                                                                                 multiclass_accuracy, multiclass_precision,
@@ -386,12 +327,12 @@ if __name__ == "__main__":
                     print("Metrics:\n", metrics_df, sep='')
                     print("-"*50)
             print(f"[Run {i+1}] Multiclass confusion matrix:\n", multiclass_confusion_matrix, sep='')
-            plot_confusion_matrix(multiclass_confusion_matrix, os.path.join(images_dir, f"confusion_matrix_{model_name}_{dataset_name}_{i+1}.png"))
-            plot_shap_values(final_model, dataset, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}.png"))
+            ttutils.plot_confusion_matrix(multiclass_confusion_matrix, category_map, os.path.join(images_dir, f"confusion_matrix_{model_name}_{dataset_name}_{i+1}.png"))
+            ttutils.plot_shap_values(final_model, dataset, category_map, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}.png"))
     results_df = pd.concat(df_list)
     if zero_shot or few_shot:
         local_test_results_df = pd.concat(local_test_df_list)
-        local_test_results_df.to_csv(os.path.join(results_dir, f"validation_results_{model_name}_{dataset_name}_{tl_type}.csv"))
+        local_test_results_df.to_csv(os.path.join(results_dir, f"local_test_results_{model_name}_{dataset_name}_{tl_type}.csv"))
         results_df.to_csv(os.path.join(results_dir, f"results_{model_name}_{dataset_name}_{tl_type}.csv"))
     else:
         results_df.to_csv(os.path.join(results_dir, f"results_{model_name}_{dataset_name}.csv"))
