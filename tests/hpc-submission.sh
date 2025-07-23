@@ -42,23 +42,23 @@ else
 fi
 
 if [[ "$model" == "transformer" ]]; then
-    epochs=10
+    epochs=40
 else
-    epochs=5
+    epochs=20
 fi
 
 if [[ "$run_mode" == "zero_shot" ]]; then
-    python3 -u model_runner.py -c "$config_file" --zero-shot "$model" -d "$dataset" "$label_column" 3 1 $epochs
+    python3 -u model_runner.py -c "$config_file" -e --zero-shot "$model" -d "$dataset" "$label_column" 3 1 $epochs
 elif [[ "$run_mode" == "zero_shot_remove_features" ]]; then
-    python3 -u model_runner.py -c "$config_file" -r --zero-shot "$model" -d "$dataset" "$label_column" 3 1 $epochs
+    python3 -u model_runner.py -c "$config_file" -r -e --zero-shot "$model" -d "$dataset" "$label_column" 3 1 $epochs
 elif [[ "$run_mode" == "normal" ]]; then
-    python3 -u model_runner.py -c "$config_file" "$model" -f "$dataset" "$label_column" 10 10 $epochs
+    python3 -u model_runner.py -c "$config_file" -e "$model" -f "$dataset" "$label_column" 10 10 $epochs
 elif [[ "$run_mode" == "normal_remove_features" ]]; then
-    python3 -u model_runner.py -c "$config_file" -r "$model" -f "$dataset" "$label_column" 10 10 $epochs
+    python3 -u model_runner.py -c "$config_file" -r -e "$model" -f "$dataset" "$label_column" 10 10 $epochs
 elif [[ "$run_mode" == "few_shot" ]]; then
-    python3 -u model_runner.py -c "$config_file" --few-shot "$samples_per_class" "$model" -d "$dataset" "$label_column" 3 1 $epochs
+    python3 -u model_runner.py -c "$config_file" -e --few-shot "$samples_per_class" "$model" -d "$dataset" "$label_column" 3 1 $epochs
 elif [[ "$run_mode" == "few_shot_remove_features" ]]; then
-    python3 -u model_runner.py -c "$config_file" -r --few-shot "$samples_per_class" "$model" -d "$dataset" "$label_column" 3 1 $epochs
+    python3 -u model_runner.py -c "$config_file" -r -e --few-shot "$samples_per_class" "$model" -d "$dataset" "$label_column" 3 1 $epochs
 else
     echo "Invalid run mode $run_mode! Valid options are: normal, normal_remove_features, zero_shot, zero_shot_remove_features, few_shot, few_shot_remove_features"
     exit 1
