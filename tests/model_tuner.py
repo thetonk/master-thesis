@@ -105,7 +105,7 @@ if __name__ == "__main__":
     del loaded_dataset
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}")
     epochs = 15 if use_transformer else 5
-    num_samples = 300 if use_transformer else 100
+    num_samples = 500 if use_transformer else 100
     if use_slurm:
         ray.init(include_dashboard=False, address=os.getenv("TUNER_HEAD_IP_ADDRESS"), _redis_password=os.getenv("TUNER_REDIS_PASSWORD"))
     else:
@@ -133,6 +133,8 @@ if __name__ == "__main__":
         }]
     hyperband = HyperBandScheduler(time_attr="training_iteration", max_t=epochs, reduction_factor=2)
     #hyperopt_search = HyperOptSearch()
+    # Two points differential evolution is better at finding optimal config than one plus one
+    #nevergrad_search = NevergradSearch(optimizer=ng.optimizers.TwoPointsDE, points_to_evaluate=initial_config)
     nevergrad_search = NevergradSearch(optimizer=ng.optimizers.DiscreteOnePlusOne, points_to_evaluate=initial_config)
     dataset_object_id = ray.put(dataset)
     tune_with_resources = tune.with_resources(

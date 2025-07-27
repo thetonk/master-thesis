@@ -4,11 +4,11 @@ import torch.nn as nn
 
 class EncoderTransformer(nn.Module):
     def __init__(self, feature_dim: int, embedding_dim:int = 128, num_heads:int = 8, 
-                 dropout:float = 0.0, epsilon=1e-6, ff_neurons=256):
+                 attn_dropout:float = 0.0, ff_dropout:float = 0.0, epsilon=1e-6, ff_neurons=256):
         super().__init__()
         self.input_projection = nn.Linear(feature_dim, embedding_dim)
-        self.multihead_attention = nn.MultiheadAttention(embed_dim=embedding_dim, num_heads=num_heads, dropout=dropout, batch_first=True)
-        self.dropout = nn.Dropout(dropout)
+        self.multihead_attention = nn.MultiheadAttention(embed_dim=embedding_dim, num_heads=num_heads, dropout=attn_dropout, batch_first=True)
+        self.dropout = nn.Dropout(ff_dropout)
         self.normalization = nn.LayerNorm(normalized_shape=embedding_dim, eps=epsilon)
         self.ff_net = nn.Sequential(
             nn.Linear(embedding_dim, ff_neurons),
@@ -48,19 +48,23 @@ class MLPClassifier(nn.Module):
 
 class MyModel(nn.Module):
     def __init__(self, num_features: int, num_classes: int, num_encoders:int = 1, num_mlps:int = 1,
-                 enc_embedding_dim:int = 128, enc_num_heads:int = 8, enc_ff_neurons:int = 256, mlp_hidden_neurons:int = 512):
+                 enc_embedding_dim:int = 128, enc_num_heads:int = 8, enc_ff_neurons:int = 256,
+                 enc_ff_dropout:float = 0, enc_attn_dropout:float = 0,
+                 mlp_hidden_neurons:int = 512, mlp_dropout:float = 0.1):
         super().__init__()
         layer_list = []
         for i in range(num_encoders):
             if i == 0:
-                layer_list.append(EncoderTransformer(num_features, enc_embedding_dim, num_heads=enc_num_heads, ff_neurons=enc_ff_neurons))
+                layer_list.append(EncoderTransformer(num_features, enc_embedding_dim, num_heads=enc_num_heads, ff_neurons=enc_ff_neurons,
+                                                     ff_dropout=enc_ff_dropout, attn_dropout=enc_attn_dropout))
             else:
-                layer_list.append(EncoderTransformer(enc_embedding_dim, enc_embedding_dim, num_heads=enc_num_heads, ff_neurons=enc_ff_neurons))
+                layer_list.append(EncoderTransformer(enc_embedding_dim, enc_embedding_dim, num_heads=enc_num_heads, ff_neurons=enc_ff_neurons,
+                                                     ff_dropout=enc_ff_dropout, attn_dropout=enc_ff_dropout))
         for i in range(num_mlps):
             if i == num_mlps - 1:
-                layer_list.append(MLPClassifier(enc_embedding_dim, num_classes, hidden_neurons=mlp_hidden_neurons))
+                layer_list.append(MLPClassifier(enc_embedding_dim, num_classes, hidden_neurons=mlp_hidden_neurons, dropout=mlp_dropout))
             else:
-                layer_list.append(MLPClassifier(enc_embedding_dim, enc_embedding_dim, hidden_neurons=mlp_hidden_neurons))
+                layer_list.append(MLPClassifier(enc_embedding_dim, enc_embedding_dim, hidden_neurons=mlp_hidden_neurons, dropout=mlp_dropout))
         self.layers = nn.Sequential(*layer_list)
 
 

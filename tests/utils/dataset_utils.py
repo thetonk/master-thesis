@@ -109,7 +109,7 @@ class LoadedTensorDataset():
 
 
 def load_datasets_from_dir(dataset_dir, label_column: str, drop_columns: list | None = None,
-                           rows_per_dataset: int = None, total_rows_limit: int=None, balance_classes: bool= False,
+                           rows_per_dataset: int | None = None, total_rows_limit: int=None, balance_classes: bool= False,
                            as_tensors_list: bool=False) -> LoadedTensorDataset | list[LoadedTensorDataset]:
     # assume that all datasets have same amount of classes and have same label column and features
     # first pass, discover num of classes and feature names
