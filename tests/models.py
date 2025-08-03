@@ -73,13 +73,14 @@ class MyModel(nn.Module):
 
 
 class MyLSTMClassifier(nn.Module):
-    def __init__(self, n_classes: int, hidden_lstm_states: int = 256, hidden_mlp_neurons: int = 512, dropout: float = 0.1, device='cuda'):
+    def __init__(self, n_classes: int, hidden_lstm_states: int = 256, hidden_mlp_neurons: int = 512,
+                 mlp_dropout: float = 0.1, device='cuda'):
         super().__init__()
         self.device = device
         self.hidden_lstm_states = hidden_lstm_states
         self.input_lstm = nn.LSTM(1, hidden_lstm_states, batch_first=True)
         self.inner_lstm  = nn.LSTM(1, hidden_lstm_states // 2, batch_first=True)
-        self.dropout_layer = nn.Dropout(dropout)
+        self.dropout_layer = nn.Dropout(mlp_dropout)
         self.mlp_classifier = nn.Sequential(
             nn.Linear(hidden_lstm_states // 2, hidden_mlp_neurons),
             nn.ReLU(),

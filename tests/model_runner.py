@@ -109,7 +109,7 @@ if __name__ == "__main__":
     os.makedirs(images_dir, exist_ok=True)
     tl_type = None #needed for zero/few shot transfer learning as well
     PATIENCE = ttutils.get_patience(epochs) # Needed for early stopping
-    DELTA = 1e-3 # Needed for early stopping
+    DELTA = 2.5e-3 # Needed for early stopping
 
     if not load_directory:
         dataset_name = os.path.basename(dataset_file).split(".")[0]
