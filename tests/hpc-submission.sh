@@ -8,7 +8,7 @@
 #SBATCH --output=/home/m/mspyrido/thesis-task/logs/out_%x_%j.log
 #SBATCH --error=/home/m/mspyrido/thesis-task/logs/error_%x_%j.log
 #SBATCH --mem=48G
-#SBATCH --cpus-per-task=6
+#SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
 #SBATCH --time=12:00:00
 #SBATCH --mail-type=ALL
@@ -42,23 +42,23 @@ else
 fi
 
 if [[ "$model" == "transformer" ]]; then
-    epochs=40
+    epochs=30
 else
-    epochs=20
+    epochs=5
 fi
 
 if [[ "$run_mode" == "zero_shot" ]]; then
-    python3 -u model_runner.py -c "$config_file" -e --zero-shot "$model" -d "$dataset" "$label_column" 3 1 $epochs
+    python3 -u model_runner.py -c "$config_file" -e --zero-shot "$model" -d "$dataset" "$label_column" 10 1 $epochs
 elif [[ "$run_mode" == "zero_shot_remove_features" ]]; then
-    python3 -u model_runner.py -c "$config_file" -r -e --zero-shot "$model" -d "$dataset" "$label_column" 3 1 $epochs
+    python3 -u model_runner.py -c "$config_file" -r -e --zero-shot "$model" -d "$dataset" "$label_column" 10 1 $epochs
 elif [[ "$run_mode" == "normal" ]]; then
     python3 -u model_runner.py -c "$config_file" -e "$model" -f "$dataset" "$label_column" 10 10 $epochs
 elif [[ "$run_mode" == "normal_remove_features" ]]; then
     python3 -u model_runner.py -c "$config_file" -r -e "$model" -f "$dataset" "$label_column" 10 10 $epochs
 elif [[ "$run_mode" == "few_shot" ]]; then
-    python3 -u model_runner.py -c "$config_file" -e --few-shot "$samples_per_class" "$model" -d "$dataset" "$label_column" 3 1 $epochs
+    python3 -u model_runner.py -c "$config_file" -e --few-shot "$samples_per_class" "$model" -d "$dataset" "$label_column" 10 1 $epochs
 elif [[ "$run_mode" == "few_shot_remove_features" ]]; then
-    python3 -u model_runner.py -c "$config_file" -r -e --few-shot "$samples_per_class" "$model" -d "$dataset" "$label_column" 3 1 $epochs
+    python3 -u model_runner.py -c "$config_file" -r -e --few-shot "$samples_per_class" "$model" -d "$dataset" "$label_column" 10 1 $epochs
 else
     echo "Invalid run mode $run_mode! Valid options are: normal, normal_remove_features, zero_shot, zero_shot_remove_features, few_shot, few_shot_remove_features"
     exit 1

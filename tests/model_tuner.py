@@ -99,14 +99,13 @@ if __name__ == "__main__":
     best_config_file_path = os.path.join(experiment_dir, best_config_file)
     rows_limit = int(400e+3)
     os.makedirs(raytune_dir, exist_ok=True)
-    HELPTEXT = f"Usage: {sys.argv[0]} RUN_MODE MODEL DATASET_FOLDER LABEL_COLUMN"
     loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_folder_path, label_column,
                                                           drop_columns=dropped_columns, total_rows_limit=rows_limit, balance_classes=True)
     dataset, num_rows, num_features, num_classes = loaded_dataset.dataset, loaded_dataset.num_rows, loaded_dataset.num_features, loaded_dataset.num_classes
     del loaded_dataset
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}")
     epochs = 15 if use_transformer else 5
-    num_samples = 800 if use_transformer else 150
+    num_samples = 500 if use_transformer else 150
     if use_slurm:
         ray.init(include_dashboard=False, address=os.getenv("TUNER_HEAD_IP_ADDRESS"), _redis_password=os.getenv("TUNER_REDIS_PASSWORD"))
     else:
@@ -117,15 +116,17 @@ if __name__ == "__main__":
                         "enc_embedding_dim": tune.choice([32, 64, 128, 256]),
                         "enc_num_heads": tune.choice([4,8,16,32]),
                         "enc_ff_neurons": tune.choice([64, 128, 256, 512]),
-                        "enc_ff_dropout": tune.choice([0, 0.1, 0.2, 0.3, 0.4]),
+                        "enc_ff_dropout": tune.choice([0, 0.1, 0.2, 0.3]),
+                        "enc_attn_dropout": tune.choice([0, 0.1, 0.2]),
                         "mlp_hidden_neurons": tune.choice([128, 256, 512, 1024]),
-                        "num_encoders": tune.choice([1,2,3,4]),
+                        "num_encoders": tune.choice([1,2]),
                         "num_mlps": tune.choice([1,2,3,4]),
-                        "mlp_dropout": tune.choice([0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]),
+                        "mlp_dropout": tune.choice([0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4])
                         }
         initial_config = [{
-            'lr': 0.0001, 'batch_size': 64, 'enc_embedding_dim': 128, 'enc_num_heads': 8, 'enc_ff_neurons': 256,
-            "enc_ff_dropout": 0, 'mlp_hidden_neurons': 256, 'num_encoders': 4, 'num_mlps': 1, "mlp_dropout": 0.1
+            'lr': 0.0001, 'batch_size': 64,
+            'enc_embedding_dim': 128, 'enc_num_heads': 8, 'enc_ff_neurons': 256, 'enc_ff_dropout': 0, 'enc_attn_dropout': 0,
+            'mlp_hidden_neurons': 256, 'num_encoders': 1, 'num_mlps': 1, 'mlp_dropout': 0.1
         }]
     else:
         search_space = {"lr": tune.choice([1e-4, 1e-3, 1e-2]),

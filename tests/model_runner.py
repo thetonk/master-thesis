@@ -25,7 +25,6 @@ if __name__ == "__main__":
     parser.add_argument("runs", type=int, help="Number of runs. Must not be 0", default=1)
     parser.add_argument("folds", type=int, help="Number of folds. Must not be negative. Ignored if used with zero-shot.",default=0)
     parser.add_argument("epochs", type=int, help="Number of traininig epochs. Must be larger than 0", default=10)
-    #parser.add_argument("-z", "--zero-shot", action="store_true", help="Run zero-shot transfer learning")
     parser.add_argument("-c", "--config", type=str, help="Path to hyperparameter configuration file")
     parser.add_argument("-r", action="store_true", help="Remove network specific features", dest="remove_features")
     parser.add_argument("-e", "--early-stop", action="store_true", help="Use early stopping")
@@ -39,7 +38,7 @@ if __name__ == "__main__":
     use_transformer = True
     load_directory = False
     zero_shot = False
-    N_WORKERS = 6
+    N_WORKERS = 8
     matplotlib.use('Agg') # Use Agg engine for headless operation
 
     if torch.cuda.is_available():
@@ -157,7 +156,7 @@ if __name__ == "__main__":
         dataset_name += "_removed"
         model_file += "_removed"
 
-    model_filename = os.path.join("trained_models", f"{model_file}.pt")
+    model_filename = os.path.join(trained_models_dir, f"{model_file}.pt")
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}, datatype: {datatype}")
     metric_names = ["Run #","Fold #","Class", "Accuracy", "Precision", "Recall", "F1 Score"]
     df_list = []
@@ -170,6 +169,7 @@ if __name__ == "__main__":
             show_summary = True
             for fold, (_, testset_idx) in enumerate(dataset_loo.split(dataset_list)):
                 print(f"Using dataset {testset_idx.item()+1} as test!")
+                # On the following datasets, tensor with index 0 are data rows with features, tensor index 1 is the corresponding labels
                 temp_dataset_list = dataset_list.copy()
                 test_dataset = temp_dataset_list.pop(testset_idx.item()).dataset
                 train_dataset_list = temp_dataset_list
@@ -180,15 +180,33 @@ if __name__ == "__main__":
                     y = torch.cat((y, train_dataset_list[j].dataset.tensors[1]), dim=0)
                 del train_dataset_list
                 train_dataset = TensorDataset(X, y)
+                class_values = category_map.keys()
                 if few_shot:
-                    few_shot_samples = num_classes * few_shot_samples_per_class
-                    initial_test_dataset = test_dataset
-                    infused_dataset, test_dataset = random_split(initial_test_dataset, [few_shot_samples, initial_test_dataset.tensors[0].shape[0] - few_shot_samples])
-                    X = torch.cat((X, initial_test_dataset.tensors[0][infused_dataset.indices]), dim=0)
-                    y = torch.cat((y, initial_test_dataset.tensors[1][infused_dataset.indices]), dim=0)
+                    X_test_initial = test_dataset.tensors[0]
+                    y_test_initial = test_dataset.tensors[1]
+                    # shuffle test test so infused samples are random each time
+                    random_indices = torch.randperm(X_test_initial.shape[0])
+                    X_test_initial = X_test_initial[random_indices]
+                    y_test_initial = y_test_initial[random_indices]
+                    del random_indices
+                    infused_indices_list = []
+                    for class_value in class_values:
+                        infused_samples_indexes = (y_test_initial == class_value).nonzero(as_tuple=True)[0][:few_shot_samples_per_class]
+                        infused_indices_list += infused_samples_indexes
+                        del infused_samples_indexes
+                    X_infused = X_test_initial[infused_indices_list]
+                    y_infused = y_test_initial[infused_indices_list]
+                    test_indices_mask = torch.ones(y_test_initial.shape[0], dtype=torch.bool)
+                    test_indices_mask[infused_indices_list] = False
+                    X_test = X_test_initial[test_indices_mask]
+                    y_test = y_test_initial[test_indices_mask]
+                    X = torch.cat((X, X_infused), dim=0)
+                    y = torch.cat((y, y_infused), dim=0)
+                    test_dataset = TensorDataset(X_test, y_test)
+                    del X_test, y_test, X_infused, y_infused, infused_indices_list, test_indices_mask
                     print(f"Final # of rows after infusion: {X.shape[0]}")
                     train_dataset = TensorDataset(X, y)
-                    del initial_test_dataset
+                    del X_test_initial, y_test_initial
                 del X, y
                 val_loader = None
                 val_dataset = None
