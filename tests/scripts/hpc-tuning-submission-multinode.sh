@@ -12,6 +12,8 @@
 #SBATCH --mail-type=BEGIN,END #Mail when job starts and ends
 #SBATCH --mail-user=mspyrido@ece.auth.gr #email recipient
 
+# NOTE: This does not work on Aristotle HPC, because of permission errors, use the apptainer version instead.
+
 let "worker_num=(${SLURM_NTASKS} - 1)"
 
 # Define the total number of CPU cores available to ray

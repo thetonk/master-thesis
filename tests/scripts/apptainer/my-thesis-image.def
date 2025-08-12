@@ -1,0 +1,14 @@
+Bootstrap: docker
+From: pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
+
+%labels
+Author Spyridon Baltsas
+
+# requirements.txt must be on same directory with this definition file!
+%files
+requirements.txt requirements.txt
+
+%post
+pip install -r requirements.txt
+
+# for more info about def-file syntax, check here: https://apptainer.org/docs/user/main/definition_files.html
