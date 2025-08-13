@@ -1,7 +1,6 @@
 import os
 os.environ["RAY_DEDUP_LOGS"] = '0'
 os.environ["RAY_USAGE_STATS_ENABLED"] = '0'
-import sys
 import argparse
 import tempfile
 import json
@@ -56,6 +55,7 @@ if __name__ == "__main__":
         print("CUDA is not available")
         DEVICE = torch.device("cpu")
     use_transformer = True
+    use_slurm = False
     run_mode = args.run_mode
     model_name = args.model
     dataset_folder_path = args.dataset_folder
@@ -82,6 +82,7 @@ if __name__ == "__main__":
         use_transformer = False
     if run_mode.lower() == "slurm":
         # running on aristotle HPC
+        use_slurm = True
         if use_transformer:
             tune_resources = {"cpu": 8, "gpu": 0.25}
         else:
@@ -104,7 +105,13 @@ if __name__ == "__main__":
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}")
     epochs = 15 if use_transformer else 5
     num_samples = 500 if use_transformer else 150
-    ray.init(include_dashboard=False)
+    if use_slurm:
+        slurm_cpus = int(os.getenv("SLURM_CPUS_PER_TASK", 1))
+        slurm_gpus = int(os.getenv("SLURM_GPUS", 0))
+        ray.init(include_dashboard=False, num_cpus=slurm_cpus, num_gpus=slurm_gpus)
+    else:
+        ray.init(include_dashboard=False)
+    print("Ray will use the following resources:", ray.available_resources())
     if use_transformer:
         search_space = {"lr": tune.choice([1e-4, 1e-3, 1e-2]),
                         "batch_size": tune.choice( [32, 64, 128, 256]),

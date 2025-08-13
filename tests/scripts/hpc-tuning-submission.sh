@@ -24,6 +24,7 @@ label_column="$3"
 
 module load gcc/14.2.0 apptainer/1.3.4
 
-apptainer exec --nv --pid --writable-tmpfs /scratch/m/mspyrido/my-thesis-image.sif python3 -r local "$model" "$dataset_directory" "$label_column"
+apptainer exec -B "$dataset_directory:$dataset_directory" --nv --pid --writable-tmpfs /scratch/m/mspyrido/my-thesis-image.sif \
+    python3 model_tuner.py -r slurm "$model" "$dataset_directory" "$label_column"
 
 exit
