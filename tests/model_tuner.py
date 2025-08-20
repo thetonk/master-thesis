@@ -14,7 +14,7 @@ from ray.tune.schedulers import HyperBandScheduler, ASHAScheduler
 from ray.tune.search.nevergrad import NevergradSearch
 import nevergrad as ng
 from utils import dataset_utils
-from utils.train_test_utils import train_model
+from utils.train_test_utils import train_model, get_device
 from models import MyModel, MyLSTMClassifier
 
 
@@ -48,12 +48,7 @@ if __name__ == "__main__":
     parser.add_argument("label_column", type=str, help="The name of the column to be used as class", default="Label")
     parser.add_argument("-r", action="store_true", help="Remove network specific features", dest="remove_features")
     args = parser.parse_args()
-    if torch.cuda.is_available():
-        print("CUDA available! GPU device name is:", torch.cuda.get_device_name())
-        DEVICE = torch.device("cuda")
-    else:
-        print("CUDA is not available")
-        DEVICE = torch.device("cpu")
+    DEVICE = get_device()
     use_transformer = True
     use_slurm = False
     run_mode = args.run_mode

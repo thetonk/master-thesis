@@ -5,8 +5,8 @@
 #SBATCH --ntasks=1
 #SBATCH --partition=ampere
 #SBATCH --qos=ampere-extd
-#SBATCH --output=/home/m/mspyrido/thesis-task/logs/out_%x_%j.log
-#SBATCH --error=/home/m/mspyrido/thesis-task/logs/error_%x_%j.log
+#SBATCH --output=/home/m/mspyrido/thesis-task/logs/out_model_tuner_%x_%j.log
+#SBATCH --error=/home/m/mspyrido/thesis-task/logs/error_model_tuner_%x_%j.log
 #SBATCH --mem=48G
 #SBATCH --cpus-per-task=32
 #SBATCH --gpus=1

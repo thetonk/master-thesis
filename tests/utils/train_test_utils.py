@@ -2,8 +2,9 @@ import time
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-import torcheval.metrics
-from torcheval.metrics import Metric, MulticlassAccuracy, MulticlassF1Score, MulticlassConfusionMatrix, MulticlassPrecision, MulticlassRecall
+from torcheval.metrics import Metric
+from torcheval.metrics import MulticlassAccuracy, MulticlassF1Score, MulticlassConfusionMatrix, MulticlassPrecision, MulticlassRecall
+from torcheval.metrics import BinaryAccuracy, BinaryF1Score, BinaryConfusionMatrix, BinaryPrecision, BinaryRecall
 import numpy as np
 import matplotlib.pyplot as plt
 from ray import tune
@@ -37,7 +38,7 @@ class EarlyStopping():
 
 def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader, val_loader: DataLoader | None, metric: Metric,
                 loss_function = nn.CrossEntropyLoss(), epochs: int = 30,
-                learning_rate: float = 1e-3, device="cuda", train_tune=False, early_stopper: EarlyStopping | None =None):
+                learning_rate: float = 1e-3, device=torch.device("cuda"), train_tune=False, early_stopper: EarlyStopping | None =None):
     #torch.autograd.set_detect_anomaly(True)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     best_accuracy = 0
@@ -58,6 +59,7 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
             loss = loss_function(output, label)
             total_loss += loss.item()
             #total_correct += _correct(output, label)
+            output = output.argmax(dim=1)
             metric.update(output, label)
             optimizer.zero_grad()
             loss.backward()
@@ -80,6 +82,7 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
                     output = model(data)
                     loss = loss_function(output, label)
                     total_loss += loss.item()
+                    output = output.argmax(dim=1)
                     metric.update(output, label)
                 val_loss = total_loss / batch_number
                 val_accuracy = metric.compute().item()
@@ -116,6 +119,7 @@ def test_model(model: nn.Module, test_loader: DataLoader, metrics: list[Metric],
             loss = loss_function(output, label)
             test_loss = loss.item()
             total_correct += _correct(output, label)
+            output = output.argmax(dim=1)
             for metric in metrics:
                 metric.update(output, label)
     test_loss = test_loss/num_batches
@@ -200,14 +204,23 @@ def plot_shap_values(model, dataset, category_map, num_classes, feature_names, p
     plt.close(fig)
 
 
-def prepare_test_metrics(num_classes: int, device: torch.device = torch.device("cuda")) -> list[torcheval.metrics.Metric]:
-    multilclass_accuracy_metric = MulticlassAccuracy(average=None, num_classes=num_classes, device=device)
-    multiclass_f1_metric = MulticlassF1Score(num_classes=num_classes, device=device, average=None)
-    multiclass_confusion_matrix_metric = MulticlassConfusionMatrix(num_classes=num_classes, device=device)
-    multiclass_precision_metric = MulticlassPrecision(num_classes=num_classes, average=None, device=device)
-    multiclass_recall_metric = MulticlassRecall(num_classes=num_classes, average=None, device=device)
-    metrics = [multilclass_accuracy_metric, multiclass_precision_metric, multiclass_recall_metric, multiclass_f1_metric,
-               multiclass_confusion_matrix_metric]
+def prepare_test_metrics(num_classes: int, device: torch.device = torch.device("cuda"), binary_class=False, confusion_matrix=True) -> list[Metric]:
+    if binary_class:
+        accuracy_metric = BinaryAccuracy(device=device)
+        f1_metric = BinaryF1Score(device=device)
+        confusion_matrix_metric = BinaryConfusionMatrix(device=device)
+        precision_metric = BinaryPrecision(device=device)
+        recall_metric = BinaryRecall(device=device)
+    else:
+        accuracy_metric = MulticlassAccuracy(average=None, num_classes=num_classes, device=device)
+        f1_metric = MulticlassF1Score(num_classes=num_classes, device=device, average=None)
+        confusion_matrix_metric = MulticlassConfusionMatrix(num_classes=num_classes, device=device)
+        precision_metric = MulticlassPrecision(num_classes=num_classes, average=None, device=device)
+        recall_metric = MulticlassRecall(num_classes=num_classes, average=None, device=device)
+    if confusion_matrix:
+        metrics = [accuracy_metric, precision_metric, recall_metric, f1_metric, confusion_matrix_metric]
+    else:
+        metrics = [accuracy_metric, precision_metric, recall_metric, f1_metric]
     return metrics
 
 
@@ -222,3 +235,24 @@ def get_patience(epochs: int) -> int:
     else:
         patience = 1
     return patience
+
+
+def get_device() -> torch.device:
+    if torch.cuda.is_available():
+        print("CUDA available! GPU device name is:", torch.cuda.get_device_name())
+        device = torch.device("cuda")
+    else:
+        print("CUDA is not available")
+        device = torch.device("cpu")
+    return device
+
+
+def get_all_devices():
+    if torch.cuda.is_available():
+        num_devices = torch.cuda.device_count()
+        for i in num_devices:
+            print("CUDA available! GPU device name is:", torch.cuda.get_device_name(i))
+            yield torch.device(f"cuda:{i}")
+    else:
+        print("CUDA is not available")
+        yield torch.device("cpu")

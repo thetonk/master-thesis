@@ -5,19 +5,14 @@
 #SBATCH --ntasks=1
 #SBATCH --partition=ampere
 #SBATCH --qos=ampere-extd
-#SBATCH --output=/home/m/mspyrido/thesis-task/logs/out_%x_%j.log
-#SBATCH --error=/home/m/mspyrido/thesis-task/logs/error_%x_%j.log
+#SBATCH --output=/home/m/mspyrido/thesis-task/logs/out_model_runner_%x_%j.log
+#SBATCH --error=/home/m/mspyrido/thesis-task/logs/error_model_runner_%x_%j.log
 #SBATCH --mem=48G
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
 #SBATCH --time=12:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=mspyrido@ece.auth.gr
-
-if [[ $# -lt 5 ]]; then
-    echo "Usage: $0 <run_mode> <config-file> <model> <dataset> <label_column>"
-    exit 1
-fi
 
 module load gcc/13.2.0 python/3.11 cuda/12.4.0
 

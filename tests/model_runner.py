@@ -22,9 +22,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("model", choices=("lstm", "transformer"), help="The model type")
     parser.add_argument("label_column", type=str, help="The name of the column that will be used as class.", default="Label")
-    parser.add_argument("runs", type=int, help="Number of runs. Must not be 0", default=1)
+    parser.add_argument("runs", type=int, help="Number of runs. Must be positive", default=1)
     parser.add_argument("folds", type=int, help="Number of folds. Must not be negative. Ignored if used with zero-shot.",default=0)
-    parser.add_argument("epochs", type=int, help="Number of traininig epochs. Must be larger than 0", default=10)
+    parser.add_argument("epochs", type=int, help="Number of training epochs. Must be positive", default=10)
     parser.add_argument("-c", "--config", type=str, help="Path to hyperparameter configuration file")
     parser.add_argument("-r", action="store_true", help="Remove network specific features", dest="remove_features")
     parser.add_argument("-e", "--early-stop", action="store_true", help="Use early stopping")
@@ -39,14 +39,8 @@ if __name__ == "__main__":
     load_directory = False
     zero_shot = False
     N_WORKERS = 8
+    DEVICE = ttutils.get_device()
     matplotlib.use('Agg') # Use Agg engine for headless operation
-
-    if torch.cuda.is_available():
-        print("CUDA available! GPU device name is:", torch.cuda.get_device_name())
-        DEVICE = torch.device("cuda")
-    else:
-        print("CUDA is not available")
-        DEVICE = torch.device("cpu")
 
     try:
         model_name = args.model
