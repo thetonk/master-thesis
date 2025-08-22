@@ -129,6 +129,7 @@ def test_model(model: nn.Module, test_loader: DataLoader, metrics: list[Metric],
         metric_results.append(metric.compute().cpu().numpy())
     return metric_results
 
+
 def plot_confusion_matrix(confusion_matrix, category_map, plot_filename):
     # Plot last confusion matrix
     fig, axes = plt.subplots(dpi=500)
@@ -250,7 +251,7 @@ def get_device() -> torch.device:
 def get_all_devices():
     if torch.cuda.is_available():
         num_devices = torch.cuda.device_count()
-        for i in num_devices:
+        for i in range(num_devices):
             print("CUDA available! GPU device name is:", torch.cuda.get_device_name(i))
             yield torch.device(f"cuda:{i}")
     else:

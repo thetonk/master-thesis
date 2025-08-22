@@ -1,5 +1,4 @@
 .venv
-.oldvenv/
 *.log
 *.json
 datasets/

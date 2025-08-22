@@ -74,7 +74,10 @@ class CSVDataset():
         if balance_classes:
             num_classes = len(labels.cat.categories)
             minimum_class_samples = labels.cat.codes.value_counts().min()
-            rows_limit_per_class = min(minimum_class_samples, int(rows_limit / num_classes))
+            if rows_limit > 1:
+                rows_limit_per_class = min(minimum_class_samples, int(rows_limit / num_classes))
+            else:
+                rows_limit_per_class = minimum_class_samples
             if rows_limit_per_class < (rows_limit / num_classes):
                 print(f"Warning: dataset {self.dataset_path} minority class has less samples than the required! Has: {minimum_class_samples} samples!", file=sys.stderr)
             indexes = []
@@ -85,7 +88,7 @@ class CSVDataset():
             self.X = x_tensor[indexes]
             self.y = y_tensor[indexes]
         else:
-            if x_tensor.shape[0] > rows_limit:
+            if 0 < rows_limit < x_tensor.shape[0]:
                 sss = StratifiedShuffleSplit(n_splits=1, test_size=rows_limit)
                 _, indexes = next(sss.split(x_tensor, y_tensor))
                 self.X = x_tensor[indexes]

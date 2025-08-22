@@ -47,6 +47,8 @@ if __name__ == "__main__":
         config_file = args.config
         use_early_stop = args.early_stop
         raytune_results_dir = os.path.join("tests", "results", "raytune")
+        if use_early_stop:
+            print("Using early stopping!")
         if model_name == "lstm":
             use_transformer = False
             if config_file is None:
@@ -157,7 +159,7 @@ if __name__ == "__main__":
     local_test_df_list = [] #needed for zero/few shot transfer learning, otherwise is unused
     training_metric = MulticlassAccuracy(average='macro', num_classes=num_classes, device=DEVICE)
     for i in range(num_runs):
-        print("#"*50,f"RUN {i}", "#"*50)
+        print("#"*50,f"RUN {i+1}", "#"*50)
         if zero_shot or few_shot:
             dataset_loo = LeaveOneOut()
             show_summary = True
