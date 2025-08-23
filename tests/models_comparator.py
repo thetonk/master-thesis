@@ -1,10 +1,11 @@
 import sys
 import os
 import json
+import tempfile
 import argparse
 import torch
 import torch.multiprocessing as mp
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Subset, random_split
 import pandas as pd
 import numpy as np
 from scipy.stats import ttest_rel, wilcoxon
@@ -17,7 +18,7 @@ from models import MyModel, MyLSTMClassifier
 N_WORKERS = 8
 
 def train_test_model(pipe, model, model_config, train_dataset,
-                     test_dataset, model_filename, test_metrics, device) -> None | list[np.ndarray]:
+                     test_dataset, val_dataset, test_metrics, device) -> None | list[np.ndarray]:
     model = model.to(device)
     batch_size = model_config["batch_size"]
     learning_rate = model_config["learning_rate"]
@@ -25,9 +26,15 @@ def train_test_model(pipe, model, model_config, train_dataset,
     train_metric = BinaryAccuracy(device=device)
     train_loader = DataLoader(train_dataset, batch_size, shuffle=True, persistent_workers=True, num_workers=N_WORKERS, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size, persistent_workers=True, num_workers=N_WORKERS, pin_memory=True)
-    ttutils.train_model(model, model_filename, train_loader, val_loader=None,
+    val_loader = None
+    early_stopper = None
+    if val_dataset is not None:
+        val_loader = DataLoader(val_dataset, batch_size, persistent_workers=True, num_workers=N_WORKERS, pin_memory=True)
+        early_stopper = ttutils.EarlyStopping(ttutils.get_patience(epochs), 2.5e-3)
+    with tempfile.NamedTemporaryFile(suffix=".pt") as tmpfile:
+        ttutils.train_model(model, tmpfile.name, train_loader, val_loader, early_stopper=early_stopper,
                         metric=train_metric, epochs=epochs, learning_rate=learning_rate, device=device)
-    model.load_state_dict(torch.load(model_filename, weights_only=True, map_location=device))
+        model.load_state_dict(torch.load(tmpfile.name, weights_only=True, map_location=device))
     test_results = ttutils.test_model(model, test_loader, test_metrics, device=device)
     del train_loader, test_loader
     if pipe is None:
@@ -49,10 +56,12 @@ if __name__ == "__main__":
     parser.add_argument("-r", action="store_true", help="Remove network specific features", dest="remove_features")
     parser.add_argument("-d", "--dataset-directory", type=str, help="Directory to look for datasets", dest="dataset_directory", required=True)
     parser.add_argument("-p", "--parallel", action='store_true', help="Train and test the models in parallel, utilizing multiple GPUs if possible")
+    parser.add_argument("-e", "--early-stop", action='store_true', help="Add early stopping when training models")
     args = parser.parse_args()
 
     try:
         use_parallel = args.parallel
+        use_early_stop = args.early_stop
         label_column = args.label_column
         num_runs = args.runs
         num_folds = args.folds
@@ -139,9 +148,11 @@ if __name__ == "__main__":
             print(f"Fold {fold+1}/{num_folds}")
             train_dataset = Subset(dataset, train_index)
             test_dataset = Subset(dataset, test_index)
+            val_dataset = None
+            if use_early_stop:
+                train_dataset, val_dataset = random_split(train_dataset, [0.8, 0.2])
             if not use_parallel:
                 for model_name, model_config in model_data.items():
-                    model_filename = os.path.join(trained_models_dir, f"best_model_{model_name}_{dataset_name}.pt")
                     if model_name == "lstm":
                         model = MyLSTMClassifier(num_classes, **model_config["hyperparameters"])
                         device = LSTM_DEVICE
@@ -149,7 +160,7 @@ if __name__ == "__main__":
                         model = MyModel(num_features, num_classes, **model_config["hyperparameters"])
                         device = TRANSFORMER_DEVICE
                     metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False, device=device)
-                    accuracy, precision, recall, f1_score = train_test_model(None, model, model_config, train_dataset, test_dataset, model_filename, metrics, device)
+                    accuracy, precision, recall, f1_score = train_test_model(None, model, model_config, train_dataset, test_dataset, val_dataset, metrics, device)
                     metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1], [fold+1], accuracy, precision, recall, f1_score])))
                     if model_name == "lstm":
                         lstm_metrics_df_list.append(metrics_df)
@@ -159,8 +170,6 @@ if __name__ == "__main__":
             else:
                 transformer_config = model_data["transformer"]
                 lstm_config = model_data["lstm"]
-                transformer_model_filename = os.path.join(trained_models_dir, f"best_model_transformer_{dataset_name}.pt")
-                lstm_model_filename = os.path.join(trained_models_dir, f"best_model_lstm_{dataset_name}.pt")
                 transformer_metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False, device=TRANSFORMER_DEVICE)
                 lstm_metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False, device=LSTM_DEVICE)
                 transformer_par_conn, transformer_child_conn = mp.Pipe()
@@ -168,11 +177,11 @@ if __name__ == "__main__":
                 transformer_process = mp.Process(target=train_test_model, daemon=False, args=(transformer_child_conn,
                                                                                 MyModel(num_features, num_classes, **transformer_config["hyperparameters"]),
                                                                                 transformer_config,
-                                                                                train_dataset, test_dataset, transformer_model_filename, transformer_metrics, TRANSFORMER_DEVICE))
+                                                                                train_dataset, test_dataset, val_dataset, transformer_metrics, TRANSFORMER_DEVICE))
                 lstm_process = mp.Process(target=train_test_model, daemon=False, args=(lstm_child_conn,
                                                                             MyLSTMClassifier(num_classes, **lstm_config["hyperparameters"]),
                                                                             lstm_config,
-                                                                            train_dataset, test_dataset, lstm_model_filename, lstm_metrics, LSTM_DEVICE))
+                                                                            train_dataset, test_dataset, val_dataset, lstm_metrics, LSTM_DEVICE))
                 transformer_process.start()
                 lstm_process.start()
                 accuracy, precision, recall, f1_score = transformer_par_conn.recv()
