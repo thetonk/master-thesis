@@ -18,11 +18,13 @@ from models import MyModel, MyLSTMClassifier
 N_WORKERS = 8
 
 def train_test_model(pipe, model, model_config, train_dataset,
-                     test_dataset, val_dataset, test_metrics, device) -> None | list[np.ndarray]:
-    model = model.to(device)
+                     test_dataset, val_dataset, test_metrics, device=None, device_id=None) -> None | list[np.ndarray]:
     batch_size = model_config["batch_size"]
     learning_rate = model_config["learning_rate"]
     epochs = model_config["epochs"]
+    if device is None:
+        device = torch.device(f"cuda:{device_id}")
+    model = model.to(device)
     train_metric = BinaryAccuracy(device=device)
     train_loader = DataLoader(train_dataset, batch_size, shuffle=True, persistent_workers=True, num_workers=N_WORKERS, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size, persistent_workers=True, num_workers=N_WORKERS, pin_memory=True)
@@ -57,6 +59,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dataset-directory", type=str, help="Directory to look for datasets", dest="dataset_directory", required=True)
     parser.add_argument("-p", "--parallel", action='store_true', help="Train and test the models in parallel, utilizing multiple GPUs if possible")
     parser.add_argument("-e", "--early-stop", action='store_true', help="Add early stopping when training models")
+    parser.add_argument("-dp", "--dataset-percentage", type=int, help="Percentage of dataset to use (0-100), default is 100", default=100)
     args = parser.parse_args()
 
     try:
@@ -68,10 +71,13 @@ if __name__ == "__main__":
         epochs_transformer = args.transformer_epochs
         epochs_lstm = args.lstm_epochs
         dataset_directory = args.dataset_directory
+        dataset_percentage = args.dataset_percentage
         if num_folds < 2:
             raise ValueError("Number of folds must be at least 2.")
         if num_runs < 1 or epochs_transformer < 1 or epochs_lstm < 1:
             raise ValueError("Number of runs must be at least 1.")
+
+        LSTM_DEVICE_ID = TRANSFORMER_DEVICE_ID = 0
         LSTM_DEVICE = TRANSFORMER_DEVICE = ttutils.get_device()
 
         if use_parallel:
@@ -79,9 +85,9 @@ if __name__ == "__main__":
             mp.set_start_method('spawn', force=True)
             if torch.cuda.device_count() > 1:
                 print("Multiple GPUs detected! Running tests in separate GPUs!")
-                device_gen = ttutils.get_all_devices()
-                LSTM_DEVICE = next(device_gen)
-                TRANSFORMER_DEVICE = next(device_gen)
+                device_id_gen = ttutils.get_all_cuda_devices()
+                LSTM_DEVICE_ID = next(device_id_gen)
+                TRANSFORMER_DEVICE_ID = next(device_id_gen)
 
         if args.remove_features:
             dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
@@ -121,7 +127,7 @@ if __name__ == "__main__":
     dataset_name = "TL"
     if args.remove_features:
         dataset_name += "_removed_merged_ds"
-    rows_per_dataset = 77140
+    rows_per_dataset = int(77140 * dataset_percentage / 100)
     loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_directory, label_column, dropped_columns, rows_per_dataset, balance_classes=True)
     dataset = loaded_dataset.dataset
     num_features = loaded_dataset.num_features
@@ -170,18 +176,22 @@ if __name__ == "__main__":
             else:
                 transformer_config = model_data["transformer"]
                 lstm_config = model_data["lstm"]
-                transformer_metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False, device=TRANSFORMER_DEVICE)
-                lstm_metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False, device=LSTM_DEVICE)
+                transformer_metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False,
+                                                                   device=torch.device(f"cuda:{TRANSFORMER_DEVICE_ID}"))
+                lstm_metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False,
+                                                            device=torch.device(f"cuda:{LSTM_DEVICE_ID}"))
                 transformer_par_conn, transformer_child_conn = mp.Pipe()
                 lstm_par_conn, lstm_child_conn = mp.Pipe()
                 transformer_process = mp.Process(target=train_test_model, daemon=False, args=(transformer_child_conn,
                                                                                 MyModel(num_features, num_classes, **transformer_config["hyperparameters"]),
                                                                                 transformer_config,
-                                                                                train_dataset, test_dataset, val_dataset, transformer_metrics, TRANSFORMER_DEVICE))
+                                                                                train_dataset, test_dataset, val_dataset, transformer_metrics,
+                                                                                None, TRANSFORMER_DEVICE_ID))
                 lstm_process = mp.Process(target=train_test_model, daemon=False, args=(lstm_child_conn,
                                                                             MyLSTMClassifier(num_classes, **lstm_config["hyperparameters"]),
                                                                             lstm_config,
-                                                                            train_dataset, test_dataset, val_dataset, lstm_metrics, LSTM_DEVICE))
+                                                                            train_dataset, test_dataset, val_dataset, lstm_metrics,
+                                                                            None, LSTM_DEVICE_ID))
                 transformer_process.start()
                 lstm_process.start()
                 accuracy, precision, recall, f1_score = transformer_par_conn.recv()
@@ -210,4 +220,17 @@ if __name__ == "__main__":
         wilcoxon_pvalues_list.append(wilcoxon_pvalue)
     pvalues_df = pd.DataFrame.from_dict(dict(zip(p_values_names, [metric_names, ttest_pvalues_list, wilcoxon_pvalues_list])))
     print("P-values", pvalues_df, sep='\n')
-    pvalues_df.to_csv(os.path.join(results_dir, f"pvalues_{dataset_name}.csv"))
+    transformer_results_filename = "results_transformer_comparator"
+    lstm_results_filename = "results_lstm_comparator"
+    pvalues_filename = f"pvalues_{dataset_name}"
+    if args.remove_features:
+        transformer_results_filename += "_removed"
+        lstm_results_filename += "_removed"
+        pvalues_filename += "_removed"
+    if dataset_percentage < 100:
+        transformer_results_filename += f"_{dataset_percentage}"
+        lstm_results_filename += f"_{dataset_percentage}"
+        pvalues_filename += f"{dataset_percentage}"
+    transformer_results_df.to_csv(os.path.join(results_dir, f"{transformer_results_filename}.csv"))
+    lstm_results_df.to_csv(os.path.join(results_dir, f"{lstm_results_filename}.csv"))
+    pvalues_df.to_csv(os.path.join(results_dir, f"{pvalues_filename}.csv"))

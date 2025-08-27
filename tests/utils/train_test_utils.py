@@ -248,12 +248,12 @@ def get_device() -> torch.device:
     return device
 
 
-def get_all_devices():
+def get_all_cuda_devices():
     if torch.cuda.is_available():
         num_devices = torch.cuda.device_count()
         for i in range(num_devices):
             print("CUDA available! GPU device name is:", torch.cuda.get_device_name(i))
-            yield torch.device(f"cuda:{i}")
+            yield i
     else:
         print("CUDA is not available")
-        yield torch.device("cpu")
+        yield None
