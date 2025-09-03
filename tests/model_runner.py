@@ -165,7 +165,7 @@ if __name__ == "__main__":
     df_list = []
     local_test_df_list = []  # needed for zero/few shot transfer learning, otherwise is unused
     if use_binary_metrics:
-        metric_names = ["Run #", "Fold #", "Class", "Accuracy", "Precision", "Recall", "F1 Score"]
+        metric_names = ["Run #", "Fold #", "Accuracy", "Precision", "Recall", "F1 Score"]
         training_metric = BinaryAccuracy(device=DEVICE)
     else:
         metric_names = ["Run #", "Fold #", "Class", "Accuracy", "Precision", "Recall", "F1 Score"]
