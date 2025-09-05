@@ -7,8 +7,11 @@ __pycache__/
 tests/results/raytune/**
 !tests/results/raytune/**/
 !tests/results/raytune/**/best_config.json
+!tests/results/raytune/**/best_configv2.json
 !tests/results/raytune/**/removed_features_best_config.json
 !tests/results/raytune/**/*improved_removed_features_best_config.json
 tests/results/**/new_config/
 .idea/
 *.pt
+.python-version
+

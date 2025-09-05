@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, random_split
 from torcheval.metrics import MulticlassAccuracy
 import ray
 from ray import tune
-from ray.tune.schedulers import HyperBandScheduler, ASHAScheduler
+from ray.tune.schedulers import ASHAScheduler
 #from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search.nevergrad import NevergradSearch
 import nevergrad as ng
@@ -98,7 +98,7 @@ if __name__ == "__main__":
     dataset, num_rows, num_features, num_classes = loaded_dataset.dataset, loaded_dataset.num_rows, loaded_dataset.num_features, loaded_dataset.num_classes
     del loaded_dataset
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}")
-    epochs = 15 if use_transformer else 5
+    epochs = 20 if use_transformer else 5
     num_samples = 500 if use_transformer else 150
     if use_slurm:
         slurm_cpus = int(os.getenv("SLURM_CPUS_PER_TASK", 1))
