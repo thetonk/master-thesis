@@ -45,17 +45,17 @@ else
 fi
 
 if [[ "$run_mode" == "zero_shot" ]]; then
-    python3 -u model_runner.py -c "$config_file" -b -e --zero-shot "$model" -d "$dataset" "$@" "$label_column" 10 1 $epochs
+    srun python3 -u model_runner.py -c "$config_file" -b -e --zero-shot "$model" -d "$dataset" "$@" "$label_column" 10 1 $epochs
 elif [[ "$run_mode" == "zero_shot_remove_features" ]]; then
-    python3 -u model_runner.py -c "$config_file" -b -r -e --zero-shot "$model" -d "$dataset" "$@" "$label_column" 10 1 $epochs
+    srun python3 -u model_runner.py -c "$config_file" -b -r -e --zero-shot "$model" -d "$dataset" "$@" "$label_column" 10 1 $epochs
 elif [[ "$run_mode" == "normal" ]]; then
-    python3 -u model_runner.py -c "$config_file" -b -e "$model" -f "$dataset" "$label_column" "$@" 10 10 $epochs
+    srun python3 -u model_runner.py -c "$config_file" -b -e "$model" -f "$dataset" "$label_column" "$@" 10 10 $epochs
 elif [[ "$run_mode" == "normal_remove_features" ]]; then
-    python3 -u model_runner.py -c "$config_file" -b -r -e "$model" -f "$dataset" "$label_column" "$@" 10 10 $epochs
+    srun python3 -u model_runner.py -c "$config_file" -b -r -e "$model" -f "$dataset" "$label_column" "$@" 10 10 $epochs
 elif [[ "$run_mode" == "few_shot" ]]; then
-    python3 -u model_runner.py -c "$config_file" -b -e --few-shot "$samples_per_class" "$model" -d "$@" "$dataset" "$label_column" 10 1 $epochs
+    srun python3 -u model_runner.py -c "$config_file" -b -e --few-shot "$samples_per_class" "$model" -d "$@" "$dataset" "$label_column" 10 1 $epochs
 elif [[ "$run_mode" == "few_shot_remove_features" ]]; then
-    python3 -u model_runner.py -c "$config_file" -b -r -e --few-shot "$samples_per_class" "$model" -d "$dataset" "$@" "$label_column" 10 1 $epochs
+    srun python3 -u model_runner.py -c "$config_file" -b -r -e --few-shot "$samples_per_class" "$model" -d "$dataset" "$@" "$label_column" 10 1 $epochs
 else
     echo "Invalid run mode $run_mode! Valid options are: normal, normal_remove_features, zero_shot, zero_shot_remove_features, few_shot, few_shot_remove_features"
     exit 1

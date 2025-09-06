@@ -3,6 +3,7 @@ import os
 import json
 import tempfile
 import argparse
+import signal
 import torch
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, Subset, random_split
@@ -13,7 +14,8 @@ from torcheval.metrics import BinaryAccuracy
 from sklearn.model_selection import StratifiedKFold
 from utils import dataset_utils
 from utils import train_test_utils as ttutils
-from models import MyModel, MyLSTMClassifier
+from utils.models import MyModel, MyLSTMClassifier
+from utils.exceptions import handle_slurm_exception
 
 N_WORKERS = 8
 
@@ -61,6 +63,11 @@ if __name__ == "__main__":
     parser.add_argument("-e", "--early-stop", action='store_true', help="Add early stopping when training models")
     parser.add_argument("-dp", "--dataset-percentage", type=int, help="Percentage of dataset to use (0-100), default is 100", default=100)
     args = parser.parse_args()
+
+    if "SLURM_JOB_ID" in os.environ:
+        print("Running in SLURM environment!")
+        signal.signal(signal.SIGTERM, handle_slurm_exception)
+        signal.signal(signal.SIGKILL, handle_slurm_exception)
 
     try:
         use_parallel = args.parallel
@@ -146,91 +153,96 @@ if __name__ == "__main__":
     p_values_names = ["Metric", "T-test p-value", "Wilcoxon p-value"]
     transformer_metrics_df_list = []
     lstm_metrics_df_list = []
-    for i in range(num_runs):
-        print("#"*50,f"RUN {i+1}", "#"*50)
-        strat_kfold = StratifiedKFold(n_splits=num_folds, shuffle=True)
-        for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
-            print("-"*50)
-            print(f"Fold {fold+1}/{num_folds}")
-            train_dataset = Subset(dataset, train_index)
-            test_dataset = Subset(dataset, test_index)
-            val_dataset = None
-            if use_early_stop:
-                train_dataset, val_dataset = random_split(train_dataset, [0.8, 0.2])
-            if not use_parallel:
-                for model_name, model_config in model_data.items():
-                    if model_name == "lstm":
-                        model = MyLSTMClassifier(num_classes, **model_config["hyperparameters"])
-                        device = LSTM_DEVICE
-                    else:
-                        model = MyModel(num_features, num_classes, **model_config["hyperparameters"])
-                        device = TRANSFORMER_DEVICE
-                    metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False, device=device)
-                    accuracy, precision, recall, f1_score = train_test_model(None, model, model_config, train_dataset, test_dataset, val_dataset, metrics, device)
+    try:
+        for i in range(num_runs):
+            print("#"*50,f"RUN {i+1}", "#"*50)
+            strat_kfold = StratifiedKFold(n_splits=num_folds, shuffle=True)
+            for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
+                print("-"*50)
+                print(f"Fold {fold+1}/{num_folds}")
+                train_dataset = Subset(dataset, train_index)
+                test_dataset = Subset(dataset, test_index)
+                val_dataset = None
+                if use_early_stop:
+                    train_dataset, val_dataset = random_split(train_dataset, [0.8, 0.2])
+                if not use_parallel:
+                    for model_name, model_config in model_data.items():
+                        if model_name == "lstm":
+                            model = MyLSTMClassifier(num_classes, **model_config["hyperparameters"])
+                            device = LSTM_DEVICE
+                        else:
+                            model = MyModel(num_features, num_classes, **model_config["hyperparameters"])
+                            device = TRANSFORMER_DEVICE
+                        metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False, device=device)
+                        accuracy, precision, recall, f1_score = train_test_model(None, model, model_config, train_dataset, test_dataset, val_dataset, metrics, device)
+                        metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1], [fold+1], accuracy, precision, recall, f1_score])))
+                        if model_name == "lstm":
+                            lstm_metrics_df_list.append(metrics_df)
+                        else:
+                            transformer_metrics_df_list.append(metrics_df)
+                        del model
+                else:
+                    transformer_config = model_data["transformer"]
+                    lstm_config = model_data["lstm"]
+                    transformer_metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False,
+                                                                       device=torch.device(f"cuda:{TRANSFORMER_DEVICE_ID}"))
+                    lstm_metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False,
+                                                                device=torch.device(f"cuda:{LSTM_DEVICE_ID}"))
+                    transformer_par_conn, transformer_child_conn = mp.Pipe()
+                    lstm_par_conn, lstm_child_conn = mp.Pipe()
+                    transformer_process = mp.Process(target=train_test_model, daemon=False, args=(transformer_child_conn,
+                                                                                    MyModel(num_features, num_classes, **transformer_config["hyperparameters"]),
+                                                                                    transformer_config,
+                                                                                    train_dataset, test_dataset, val_dataset, transformer_metrics,
+                                                                                    None, TRANSFORMER_DEVICE_ID))
+                    lstm_process = mp.Process(target=train_test_model, daemon=False, args=(lstm_child_conn,
+                                                                                MyLSTMClassifier(num_classes, **lstm_config["hyperparameters"]),
+                                                                                lstm_config,
+                                                                                train_dataset, test_dataset, val_dataset, lstm_metrics,
+                                                                                None, LSTM_DEVICE_ID))
+                    transformer_process.start()
+                    lstm_process.start()
+                    accuracy, precision, recall, f1_score = transformer_par_conn.recv()
+                    transformer_process.join()
                     metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1], [fold+1], accuracy, precision, recall, f1_score])))
-                    if model_name == "lstm":
-                        lstm_metrics_df_list.append(metrics_df)
-                    else:
-                        transformer_metrics_df_list.append(metrics_df)
-                    del model
-            else:
-                transformer_config = model_data["transformer"]
-                lstm_config = model_data["lstm"]
-                transformer_metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False,
-                                                                   device=torch.device(f"cuda:{TRANSFORMER_DEVICE_ID}"))
-                lstm_metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False,
-                                                            device=torch.device(f"cuda:{LSTM_DEVICE_ID}"))
-                transformer_par_conn, transformer_child_conn = mp.Pipe()
-                lstm_par_conn, lstm_child_conn = mp.Pipe()
-                transformer_process = mp.Process(target=train_test_model, daemon=False, args=(transformer_child_conn,
-                                                                                MyModel(num_features, num_classes, **transformer_config["hyperparameters"]),
-                                                                                transformer_config,
-                                                                                train_dataset, test_dataset, val_dataset, transformer_metrics,
-                                                                                None, TRANSFORMER_DEVICE_ID))
-                lstm_process = mp.Process(target=train_test_model, daemon=False, args=(lstm_child_conn,
-                                                                            MyLSTMClassifier(num_classes, **lstm_config["hyperparameters"]),
-                                                                            lstm_config,
-                                                                            train_dataset, test_dataset, val_dataset, lstm_metrics,
-                                                                            None, LSTM_DEVICE_ID))
-                transformer_process.start()
-                lstm_process.start()
-                accuracy, precision, recall, f1_score = transformer_par_conn.recv()
-                transformer_process.join()
-                metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1], [fold+1], accuracy, precision, recall, f1_score])))
-                transformer_metrics_df_list.append(metrics_df)
-                accuracy, precision, recall, f1_score = lstm_par_conn.recv()
-                lstm_process.join()
-                metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1], [fold+1], accuracy, precision, recall, f1_score])))
-                lstm_metrics_df_list.append(metrics_df)
-
-    transformer_results_df = pd.concat(transformer_metrics_df_list)
-    print("Transformer results", transformer_results_df, sep='\n')
-    lstm_results_df = pd.concat(lstm_metrics_df_list)
-    print("LSTM results", lstm_results_df, sep='\n')
-    del transformer_metrics_df_list, lstm_metrics_df_list
-    metric_names = ["Accuracy", "Precision", "Recall", "F1 Score"]
-    ttest_pvalues_list = []
-    wilcoxon_pvalues_list = []
-    for metric_name in metric_names:
-        ttest_result = ttest_rel(transformer_results_df[metric_name], lstm_results_df[metric_name])
-        wilcoxon_result = wilcoxon(transformer_results_df[metric_name], lstm_results_df[metric_name])
-        ttest_pvalue = ttest_result.pvalue
-        wilcoxon_pvalue = wilcoxon_result.pvalue
-        ttest_pvalues_list.append(ttest_pvalue)
-        wilcoxon_pvalues_list.append(wilcoxon_pvalue)
-    pvalues_df = pd.DataFrame.from_dict(dict(zip(p_values_names, [metric_names, ttest_pvalues_list, wilcoxon_pvalues_list])))
-    print("P-values", pvalues_df, sep='\n')
-    transformer_results_filename = "results_transformer_comparator"
-    lstm_results_filename = "results_lstm_comparator"
-    pvalues_filename = f"pvalues_{dataset_name}"
-    if args.remove_features:
-        transformer_results_filename += "_removed"
-        lstm_results_filename += "_removed"
-        pvalues_filename += "_removed"
-    if dataset_percentage < 100:
-        transformer_results_filename += f"_{dataset_percentage}"
-        lstm_results_filename += f"_{dataset_percentage}"
-        pvalues_filename += f"{dataset_percentage}"
-    transformer_results_df.to_csv(os.path.join(results_dir, f"{transformer_results_filename}.csv"))
-    lstm_results_df.to_csv(os.path.join(results_dir, f"{lstm_results_filename}.csv"))
-    pvalues_df.to_csv(os.path.join(results_dir, f"{pvalues_filename}.csv"))
+                    transformer_metrics_df_list.append(metrics_df)
+                    accuracy, precision, recall, f1_score = lstm_par_conn.recv()
+                    lstm_process.join()
+                    metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1], [fold+1], accuracy, precision, recall, f1_score])))
+                    lstm_metrics_df_list.append(metrics_df)
+    except Exception as e:
+        print("Exception occurred!", e, file=sys.stderr)
+    finally:
+        if len(transformer_metrics_df_list) > 0:
+            print("Saving statistics...")
+            transformer_results_df = pd.concat(transformer_metrics_df_list)
+            print("Transformer results", transformer_results_df, sep='\n')
+            lstm_results_df = pd.concat(lstm_metrics_df_list)
+            print("LSTM results", lstm_results_df, sep='\n')
+            del transformer_metrics_df_list, lstm_metrics_df_list
+            metric_names = ["Accuracy", "Precision", "Recall", "F1 Score"]
+            ttest_pvalues_list = []
+            wilcoxon_pvalues_list = []
+            for metric_name in metric_names:
+                ttest_result = ttest_rel(transformer_results_df[metric_name], lstm_results_df[metric_name])
+                wilcoxon_result = wilcoxon(transformer_results_df[metric_name], lstm_results_df[metric_name])
+                ttest_pvalue = ttest_result.pvalue
+                wilcoxon_pvalue = wilcoxon_result.pvalue
+                ttest_pvalues_list.append(ttest_pvalue)
+                wilcoxon_pvalues_list.append(wilcoxon_pvalue)
+            pvalues_df = pd.DataFrame.from_dict(dict(zip(p_values_names, [metric_names, ttest_pvalues_list, wilcoxon_pvalues_list])))
+            print("P-values", pvalues_df, sep='\n')
+            transformer_results_filename = "results_transformer_comparator"
+            lstm_results_filename = "results_lstm_comparator"
+            pvalues_filename = f"pvalues_{dataset_name}"
+            if args.remove_features:
+                transformer_results_filename += "_removed"
+                lstm_results_filename += "_removed"
+                pvalues_filename += "_removed"
+            if dataset_percentage < 100:
+                transformer_results_filename += f"_{dataset_percentage}"
+                lstm_results_filename += f"_{dataset_percentage}"
+                pvalues_filename += f"{dataset_percentage}"
+            transformer_results_df.to_csv(os.path.join(results_dir, f"{transformer_results_filename}.csv"))
+            lstm_results_df.to_csv(os.path.join(results_dir, f"{lstm_results_filename}.csv"))
+            pvalues_df.to_csv(os.path.join(results_dir, f"{pvalues_filename}.csv"))

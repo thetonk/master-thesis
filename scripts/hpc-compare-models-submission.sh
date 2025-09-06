@@ -39,7 +39,7 @@ shift 9
 shopt -s nocasematch
 
 if [[ "$run_mode" == "parallel" ]]; then
-  python3 -u models_comparator.py -r -p -d "$dataset_dir" -tc "$transformer_config" -te "$transformer_epochs" -lc "$lstm_config" -le "$lstm_epochs" "$@" "$label_column" "$num_runs" "$num_folds"
+  srun python3 -u models_comparator.py -r -p -d "$dataset_dir" -tc "$transformer_config" -te "$transformer_epochs" -lc "$lstm_config" -le "$lstm_epochs" "$@" "$label_column" "$num_runs" "$num_folds"
 else
-  python3 -u models_comparator.py -r -d "$dataset_dir" -tc "$transformer_config" -te "$transformer_epochs" -lc "$lstm_config" -le "$lstm_epochs" "$@" "$label_column" "$num_runs" "$num_folds"
+  srun python3 -u models_comparator.py -r -d "$dataset_dir" -tc "$transformer_config" -te "$transformer_epochs" -lc "$lstm_config" -le "$lstm_epochs" "$@" "$label_column" "$num_runs" "$num_folds"
 fi
