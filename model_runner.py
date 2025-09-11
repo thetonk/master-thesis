@@ -47,7 +47,6 @@ if __name__ == "__main__":
 
     if "SLURM_JOB_ID" in os.environ:
         print("Running in SLURM environment!")
-        signal.signal(signal.SIGKILL, handle_slurm_exception)
         signal.signal(signal.SIGTERM, handle_slurm_exception)
 
     try:
@@ -207,7 +206,7 @@ if __name__ == "__main__":
                         infused_indices_list = []
                         for class_value in class_values:
                             infused_samples_indexes = (y_test_initial == class_value).nonzero(as_tuple=True)[0][:few_shot_samples_per_class]
-                            infused_indices_list += infused_samples_indexes
+                            infused_indices_list += [int(i) for i in infused_samples_indexes]
                             del infused_samples_indexes
                         X_infused = X_test_initial[infused_indices_list]
                         y_infused = y_test_initial[infused_indices_list]

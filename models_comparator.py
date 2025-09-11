@@ -67,7 +67,6 @@ if __name__ == "__main__":
     if "SLURM_JOB_ID" in os.environ:
         print("Running in SLURM environment!")
         signal.signal(signal.SIGTERM, handle_slurm_exception)
-        signal.signal(signal.SIGKILL, handle_slurm_exception)
 
     try:
         use_parallel = args.parallel
