@@ -59,7 +59,6 @@ if __name__ == "__main__":
     if args.remove_features:
         #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
         #                    "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
-        #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts"]
         dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
                            "Idle Mean", "Idle Min", "Idle Max"]
         experiment_name = f"test_raytune_removed_features_{model_name}"

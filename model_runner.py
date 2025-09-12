@@ -14,13 +14,20 @@ import matplotlib
 from utils import dataset_utils
 from utils import train_test_utils as ttutils
 from utils.models import MyModel, MyLSTMClassifier
-from utils.exceptions import handle_slurm_exception
+from utils.exceptions import handle_slurm_exception, InvalidArgumentException
 
 #SEED = 42
 
 if __name__ == "__main__":
     #torch.manual_seed(SEED)
     parser = argparse.ArgumentParser(add_help=True)
+    subparsers = parser.add_subparsers(title="Customization options", dest="subcommand", required=False)
+    custom_train_test_parser = subparsers.add_parser("custom_tt", description="Custom train test datasets")
+    default_train_test_parser = subparsers.add_parser("default_tt", description="Use default train test procedures")
+    custom_train_test_parser.add_argument("--train-dir", type=str,
+                                          help="Specify directory of CSV files used for train dataset")
+    custom_train_test_parser.add_argument("--test-dir", type=str,
+                                          help="Specify directory of CSV files used for test dataset")
     parser.add_argument("model", choices=("lstm", "transformer"), help="The model type")
     parser.add_argument("label_column", type=str, help="The name of the column that will be used as class.", default="Label")
     parser.add_argument("runs", type=int, help="Number of runs. Must be positive", default=1)
@@ -31,7 +38,7 @@ if __name__ == "__main__":
     parser.add_argument("-e", "--early-stop", action="store_true", help="Use early stopping")
     parser.add_argument("-b", "--binary-metrics", action="store_true", help="Use binary metrics instead of multiclass")
     parser.add_argument("-p", "--dataset-percentage", type=int, help="Percentage of dataset to use (0-100), default is 100", default=100)
-    dataset_args = parser.add_mutually_exclusive_group(required=True)
+    dataset_args = parser.add_mutually_exclusive_group(required=False)
     dataset_args.add_argument("-f", "--file", type=str, help="Dataset CSV file", dest="dataset_file")
     dataset_args.add_argument("-d", "--directory", type=str, help="Dataset directory containing CSV files", dest="dataset_folder")
     shot_args = parser.add_mutually_exclusive_group(required=False)
@@ -39,6 +46,7 @@ if __name__ == "__main__":
     shot_args.add_argument("-fs", "--few-shot", type=int, metavar="SAMPLES_PER_CLASS", help="Run few-shot transfer learning with the specified samples per class")
     args = parser.parse_args()
     use_transformer = True
+    use_custom_train_test = False
     load_directory = False
     zero_shot = False
     N_WORKERS = 8
@@ -56,6 +64,9 @@ if __name__ == "__main__":
         use_binary_metrics = args.binary_metrics
         dataset_percentage = args.dataset_percentage
         raytune_results_dir = os.path.join("tests", "results", "raytune")
+        if args.subcommand == "custom_tt":
+            use_custom_train_test = True
+            print("Using custom train test datasets!")
         if use_early_stop:
             print("Using early stopping!")
         if model_name == "lstm":
@@ -73,13 +84,18 @@ if __name__ == "__main__":
         learning_rate = config.pop("lr")
         batch_size = config.pop("batch_size")
         model_hyperparameters = config
-        if (args.zero_shot or args.few_shot) and args.dataset_folder is None:
-            raise ValueError("Transfer learning requires a directory that contains datasets!")
-        if args.dataset_folder is None:
-            dataset_file = args.dataset_file
-        else:
-            dataset_folder = args.dataset_folder
+        if use_custom_train_test:
             load_directory = True
+            if not (args.zero_shot or args.few_shot):
+                raise InvalidArgumentException("Custom train test can only be used on zero shot or few shot!")
+        else:
+            if (args.zero_shot or args.few_shot) and args.dataset_folder is None:
+                raise InvalidArgumentException("Transfer learning requires a directory that contains datasets!")
+            if args.dataset_folder is None:
+                dataset_file = args.dataset_file
+            else:
+                dataset_folder = args.dataset_folder
+                load_directory = True
         label_column = args.label_column
         num_runs = args.runs
         folds = args.folds
@@ -94,14 +110,13 @@ if __name__ == "__main__":
         if args.remove_features:
             #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
             #                   "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
-            #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts"]
             dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
                                "Idle Mean", "Idle Min", "Idle Max"]
         else:
             dropped_columns = ["Timestamp"]
         print("The following features will be ignored:")
         print(*dropped_columns, sep=',')
-    except ValueError as e:
+    except (ValueError, InvalidArgumentException) as e:
         print(e, file=sys.stderr)
         parser.print_help()
         sys.exit(1)
@@ -136,7 +151,17 @@ if __name__ == "__main__":
             print(f"Running in {'zero-shot' if zero_shot else 'few-shot'} mode!")
             tl_type = f"{'zero_shot' if zero_shot else 'few_shot'}"
             model_file = f"best_model_{model_name}_{tl_type}_TL"
-            dataset_list = dataset_utils.load_datasets_from_dir(dataset_folder, label_column, rows_per_dataset=rows_per_dataset,
+            if use_custom_train_test:
+                print("Loading training datasets...")
+                train_dataset = dataset_utils.load_datasets_from_dir(args.train_dir, label_column, rows_per_dataset=rows_per_dataset,
+                                                                      drop_columns=dropped_columns, balance_classes=True)
+                print("Loading test datasets...")
+                test_dataset = dataset_utils.load_datasets_from_dir(args.test_dir, label_column, rows_per_dataset=rows_per_dataset,
+                                                                    drop_columns=dropped_columns, balance_classes=True)
+                dataset_list = [train_dataset, test_dataset]
+                del train_dataset, test_dataset
+            else:
+                dataset_list = dataset_utils.load_datasets_from_dir(dataset_folder, label_column, rows_per_dataset=rows_per_dataset,
                                                                 drop_columns=dropped_columns, balance_classes=True, as_tensors_list=True)
             num_rows = sum([dataset.num_rows for dataset in dataset_list])
             num_classes = dataset_list[0].num_classes
@@ -196,31 +221,8 @@ if __name__ == "__main__":
                     train_dataset = TensorDataset(X, y)
                     class_values = category_map.keys()
                     if few_shot:
-                        X_test_initial = test_dataset.tensors[0]
-                        y_test_initial = test_dataset.tensors[1]
-                        # shuffle test set so infused samples are random each time
-                        random_indices = torch.randperm(X_test_initial.shape[0])
-                        X_test_initial = X_test_initial[random_indices]
-                        y_test_initial = y_test_initial[random_indices]
-                        del random_indices
-                        infused_indices_list = []
-                        for class_value in class_values:
-                            infused_samples_indexes = (y_test_initial == class_value).nonzero(as_tuple=True)[0][:few_shot_samples_per_class]
-                            infused_indices_list += [int(i) for i in infused_samples_indexes]
-                            del infused_samples_indexes
-                        X_infused = X_test_initial[infused_indices_list]
-                        y_infused = y_test_initial[infused_indices_list]
-                        test_indices_mask = torch.ones(y_test_initial.shape[0], dtype=torch.bool)
-                        test_indices_mask[infused_indices_list] = False
-                        X_test = X_test_initial[test_indices_mask]
-                        y_test = y_test_initial[test_indices_mask]
-                        X = torch.cat((X, X_infused), dim=0)
-                        y = torch.cat((y, y_infused), dim=0)
-                        test_dataset = TensorDataset(X_test, y_test)
-                        del X_test, y_test, X_infused, y_infused, infused_indices_list, test_indices_mask
-                        print(f"Final # of rows after infusion: {X.shape[0]}")
-                        train_dataset = TensorDataset(X, y)
-                        del X_test_initial, y_test_initial
+                        train_dataset, test_dataset = dataset_utils.prepare_few_shot_train_test(
+                            TensorDataset(X, y), test_dataset, few_shot_samples_per_class, class_values)
                     del X, y
                     val_loader = None
                     val_dataset = None
