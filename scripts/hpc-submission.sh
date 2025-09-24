@@ -64,8 +64,8 @@ elif [[ "$run_mode" == "normal_remove_features" ]]; then
     srun python3 -u model_runner.py -c "$config_file" -b -r -e -f "$dataset" "$label_column" "$@" default_tt \
      "$model" 10 10 $epochs
 elif [[ "$run_mode" == "few_shot" ]]; then
-    srun python3 -u model_runner.py -c "$config_file" -b -e --few-shot "$samples_per_class"-d "$@" default_tt \
-     "$model" "$dataset" "$label_column" 10 1 $epochs
+    srun python3 -u model_runner.py -c "$config_file" -b -e --few-shot "$samples_per_class" -d "$dataset" "$@" default_tt \
+     "$model" "$label_column" 10 1 $epochs
 elif [[ "$run_mode" == "few_shot_remove_features" ]]; then
     srun python3 -u model_runner.py -c "$config_file" -b -r -e --few-shot "$samples_per_class" -d "$dataset" "$@" default_tt \
      "$model" "$label_column" 10 1 $epochs
