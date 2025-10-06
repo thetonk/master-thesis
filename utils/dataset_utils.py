@@ -144,7 +144,7 @@ def load_datasets_from_dir(dataset_dir, label_column: str, drop_columns: list | 
         if as_tensors_list:
             dataset = TensorDataset(csv_dataset.X, csv_dataset.y)
             tensor_datasets.append(LoadedTensorDataset(dataset, csv_dataset.X.shape[0], csv_dataset.X.shape[1],
-                                                       dataset_categories, feature_names, csv_dataset.X.dtype))
+                                                       csv_dataset.categories, feature_names, csv_dataset.X.dtype))
         else:
             if x is None:
                 x, y = csv_dataset.X, csv_dataset.y
