@@ -110,7 +110,9 @@ pandocfilters==1.5.1
 parso==0.8.5
 pexpect==4.9.0 ; sys_platform != 'emscripten' and sys_platform != 'win32'
 pillow==11.3.0
+pip-licenses==5.0.0
 platformdirs==4.4.0
+prettytable==3.16.0
 prometheus-client==0.22.1
 prompt-toolkit==3.0.52
 protobuf==6.32.0
@@ -155,6 +157,7 @@ tensorboardx==2.6.4
 terminado==0.18.1
 threadpoolctl==3.6.0
 tinycss2==1.4.0
+tomli==2.3.0
 torch==2.8.0
 torcheval==0.0.7
 torchinfo==1.8.0
