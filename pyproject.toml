@@ -1,7 +1,7 @@
 [project]
 name = "thesis"
 version = "0.1.0"
-description = "My thesis project"
+description = "Cyberattack detection on network level using state-of-the-art deep learning models"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

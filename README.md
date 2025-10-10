@@ -1,3 +1,3 @@
 # thesis
 
-The code repository of my diploma thesis. Uses uv package manager.
+The code repository of my diploma thesis. Uses uv package manager. Readme will be filled later.
