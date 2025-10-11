@@ -14,4 +14,4 @@ tests/results/**/new_config/
 .idea/
 *.pt
 .python-version
-
+tests/results/images/tuned/
