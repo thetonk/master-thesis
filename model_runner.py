@@ -115,8 +115,10 @@ if __name__ == "__main__":
         if args.remove_features:
             #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
             #                   "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
-            dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
-                               "Idle Mean", "Idle Min", "Idle Max"]
+            if use_transformer:
+                dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
+            else:
+                dropped_columns = ["Timestamp", "Fwd Seg Size Min"]
         else:
             dropped_columns = ["Timestamp"]
         print("The following features will be ignored:")
@@ -126,7 +128,7 @@ if __name__ == "__main__":
         parser.print_help()
         sys.exit(1)
 
-    results_dir = os.path.join("tests", "results")
+    results_dir = "results"
     trained_models_dir = os.path.join(results_dir, "trained_models")
     images_dir = os.path.join(results_dir, "images")
     os.makedirs(trained_models_dir, exist_ok=True)

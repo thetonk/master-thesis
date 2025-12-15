@@ -130,7 +130,7 @@ if __name__ == "__main__":
         parser.print_help()
         sys.exit(1)
 
-    results_dir = os.path.join("tests", "results")
+    results_dir = "results"
     trained_models_dir = os.path.join(results_dir, "trained_models")
     images_dir = os.path.join(results_dir, "images")
     os.makedirs(trained_models_dir, exist_ok=True)

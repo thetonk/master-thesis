@@ -61,22 +61,6 @@ if __name__ == "__main__":
     dataset_folder_path = args.dataset_folder
     label_column = args.label_column
 
-    if args.remove_features:
-        #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
-        #                    "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
-        dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
-                           "Idle Mean", "Idle Min", "Idle Max"]
-        experiment_name = f"test_raytune_removed_features_{model_name}"
-        best_config_file = "removed_features_best_config.json"
-        
-    else:
-        dropped_columns = ["Timestamp"]
-        experiment_name = f"test_raytune_{model_name}"
-        best_config_file = "best_config.json"
-
-    print("The following features will be ignored:")
-    print(*dropped_columns, sep=',')
-
     if model_name.lower() == "lstm":
         use_transformer = False
     if run_mode.lower() == "slurm":
@@ -92,7 +76,25 @@ if __name__ == "__main__":
         else:
             tune_resources = {"cpu": 8, "gpu": 1}
 
-    raytune_dir = os.path.realpath(os.path.join("tests", "results", "raytune"))
+    if args.remove_features:
+        #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
+        #                    "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
+        if use_transformer:
+            dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
+        else:
+            dropped_columns = ["Timestamp", "Fwd Seg Size Min"]
+        experiment_name = f"test_raytune_removed_features_{model_name}"
+        best_config_file = "removed_features_best_config.json"
+        
+    else:
+        dropped_columns = ["Timestamp"]
+        experiment_name = f"test_raytune_{model_name}"
+        best_config_file = "best_config.json"
+
+    print("The following features will be ignored:")
+    print(*dropped_columns, sep=',')
+
+    raytune_dir = os.path.realpath(os.path.join("results", "raytune"))
     experiment_dir = os.path.join(raytune_dir, experiment_name)
     best_config_file_path = os.path.join(experiment_dir, best_config_file)
     rows_limit = int(400e+3)

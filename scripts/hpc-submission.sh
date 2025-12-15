@@ -53,16 +53,16 @@ fi
 
 if [[ "$run_mode" == "zero_shot" ]]; then
     srun python3 -u model_runner.py -c "$config_file" -b -e --zero-shot -d "$dataset" "$@" default_tt \
-     "$label_column" "$model" 10 1 $epochs
+     "$model" "$label_column" 10 1 $epochs
 elif [[ "$run_mode" == "zero_shot_remove_features" ]]; then
     srun python3 -u model_runner.py -c "$config_file" -b -r -e --zero-shot -d "$dataset" "$@" default_tt \
-     "$label_column" "$model" 10 1 $epochs
+     "$model" "$label_column" 10 1 $epochs
 elif [[ "$run_mode" == "normal" ]]; then
-    srun python3 -u model_runner.py -c "$config_file" -b -e -f "$dataset" "$label_column" "$@" default_tt \
-     "$model" 10 10 $epochs
+    srun python3 -u model_runner.py -c "$config_file" -b -e -f "$dataset" "$@" default_tt \
+     "$model" "$label_column" 10 10 $epochs
 elif [[ "$run_mode" == "normal_remove_features" ]]; then
-    srun python3 -u model_runner.py -c "$config_file" -b -r -e -f "$dataset" "$label_column" "$@" default_tt \
-     "$model" 10 10 $epochs
+    srun python3 -u model_runner.py -c "$config_file" -b -r -e -f "$dataset" "$@" default_tt \
+     "$model" "$label_column" 10 10 $epochs
 elif [[ "$run_mode" == "few_shot" ]]; then
     srun python3 -u model_runner.py -c "$config_file" -b -e --few-shot "$samples_per_class" -d "$dataset" "$@" default_tt \
      "$model" "$label_column" 10 1 $epochs
@@ -71,16 +71,16 @@ elif [[ "$run_mode" == "few_shot_remove_features" ]]; then
      "$model" "$label_column" 10 1 $epochs
 elif [[ "$run_mode" == "zero_shot_custom" ]]; then
     srun python3 -u model_runner.py -c "$config_file" -b -e --zero-shot "$@" custom_tt \
-     --train-dir "$train_dataset" --test-dir "$test_dataset" "$label_column" "$model" 10 1 $epochs
+     --train-dir "$train_dataset" --test-dir "$test_dataset" "$model" "$label_colun" 10 1 $epochs
 elif [[ "$run_mode" == "zero_shot_remove_features_custom" ]]; then
     srun python3 -u model_runner.py -c "$config_file" -b -r -e --zero-shot "$@" custom_tt \
-     --train-dir "$train_dataset" --test-dir "$test_dataset" "$label_column" "$model" 10 1 $epochs
+     --train-dir "$train_dataset" --test-dir "$test_dataset" "$model" "$label_column" 10 1 $epochs
 elif [[ "$run_mode" == "few_shot_custom" ]]; then
     srun python3 -u model_runner.py -c "$config_file" -b -e --few-shot "$samples_per_class" "$@" custom_tt \
-     --train-dir "$train_dataset" --test-dir "$test_dataset" "$label_column" "$model" 10 1 $epochs
+     --train-dir "$train_dataset" --test-dir "$test_dataset" "$model" "$label_column" 10 1 $epochs
 elif [[ "$run_mode" == "few_shot_remove_features_custom" ]]; then
     srun python3 -u model_runner.py -c "$config_file" -b -r -e --few-shot "$samples_per_class" "$@" custom_tt \
-     --train-dir "$train_dataset" --test-dir "$test_dataset" "$label_column" "$model" 10 1 $epochs
+     --train-dir "$train_dataset" --test-dir "$test_dataset" "$model" "$label_column" 10 1 $epochs
 else
     echo "Invalid run mode $run_mode!"
     exit 1
