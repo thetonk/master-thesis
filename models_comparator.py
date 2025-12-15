@@ -83,6 +83,7 @@ if __name__ == "__main__":
         epochs_lstm = args.lstm_epochs
         dataset_directory = args.dataset_directory
         dataset_percentage = args.dataset_percentage
+        remove_features = args.remove_featues
         if num_folds < 2:
             raise ValueError("Number of folds must be at least 2.")
         if num_runs < 1 or epochs_transformer < 1 or epochs_lstm < 1:
@@ -100,14 +101,17 @@ if __name__ == "__main__":
                 LSTM_DEVICE_ID = next(device_id_gen)
                 TRANSFORMER_DEVICE_ID = next(device_id_gen)
 
-        if args.remove_features:
-            dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
-                               "Idle Mean", "Idle Min", "Idle Max"]
+        if remove_features:
+            transformer_dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
+            lstm_dropped_columns = ["Timestamp", "Fwd Seg Size Min"]
+            print("For Transformer model the following features are being dropped:")
+            print(*transformer_dropped_columns, sep='')
+            print("For LSTM the following features are being dropped:")
+            print(*lstm_dropped_columns, sep='')
         else:
             dropped_columns = ["Timestamp"]
-
-        print("The following features will be ignored:")
-        print(*dropped_columns, sep=',')
+            print("The following features will be ignored:")
+            print(*dropped_columns, sep=',')
         model_data = {"transformer": {},
                       "lstm": {}}
         with open(args.transformer_config, "r") as f:
@@ -136,23 +140,34 @@ if __name__ == "__main__":
     os.makedirs(trained_models_dir, exist_ok=True)
     os.makedirs(images_dir, exist_ok=True)
     dataset_name = "TL"
-    if args.remove_features:
-        dataset_name += "_removed_merged_ds"
     rows_per_dataset = int(77140 * dataset_percentage / 100)
-    loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_directory, label_column, dropped_columns, rows_per_dataset, balance_classes=True)
-    dataset = loaded_dataset.dataset
-    num_features = loaded_dataset.num_features
-    num_rows = loaded_dataset.num_rows
-    num_classes = loaded_dataset.num_classes
-    datatype = loaded_dataset.dtype
-    feature_names = loaded_dataset.feature_names
-    category_map = loaded_dataset.categories
-    X = dataset.tensors[0]
-    y = dataset.tensors[1]
+    if remove_features:
+        dataset_name += "_removed_merged_ds"
+        transformer_loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_directory, label_column, transformer_dropped_columns, rows_per_dataset, balance_classes=True)
+        lstm_loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_directory, label_column, lstm_dropped_columns, rows_per_dataset, balance_classes=True)
+        transformer_dataset = transformer_loaded_dataset.dataset
+        lstm_dataset = lstm_loaded_dataset.dataset
+        transformer_num_features = transformer_loaded_dataset.num_features
+        num_rows = transformer_loaded_dataset.num_rows
+        num_classes = transformer_loaded_dataset.num_classes
+        datatype = transformer_loaded_dataset.dtype
+        del transformer_loaded_dataset, lstm_loaded_dataset
+        X = transformer_dataset.tensors[0]
+        y = transformer_dataset.tensors[1]
+    else:
+        loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_directory, label_column, dropped_columns, rows_per_dataset, balance_classes=True)
+        dataset = loaded_dataset.dataset
+        transformer_num_features = loaded_dataset.num_features
+        num_rows = loaded_dataset.num_rows
+        num_classes = loaded_dataset.num_classes
+        datatype = loaded_dataset.dtype
+        del loaded_dataset
+        X = dataset.tensors[0]
+        y = dataset.tensors[1]
     class_frequencies = y.bincount(minlength=num_classes)
     class_percentages = class_frequencies.float() / y.shape[0]
     print("Class percentages:", class_percentages)
-    print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}, datatype: {datatype}")
+    print(f"# of rows: {num_rows}, # of classes: {num_classes}, datatype: {datatype}")
     metric_names = ["Run #","Fold #", "Accuracy", "Precision", "Recall", "F1 Score"]
     p_values_names = ["Metric", "T-test p-value", "Wilcoxon p-value"]
     transformer_metrics_df_list = []
@@ -164,26 +179,47 @@ if __name__ == "__main__":
             for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
                 print("-"*50)
                 print(f"Fold {fold+1}/{num_folds}")
-                train_dataset = Subset(dataset, train_index)
-                test_dataset = Subset(dataset, test_index)
-                val_dataset = None
-                if use_early_stop:
-                    train_dataset, val_dataset = random_split(train_dataset, [0.8, 0.2])
+                if remove_features:
+                    transformer_val_dataset = None
+                    lstm_val_dataset = None
+                    transformer_train_dataset = Subset(transformer_dataset, train_index)
+                    lstm_train_dataset = Subset(lstm_dataset, train_index)
+                    transformer_test_dataset = Subset(transformer_dataset, test_index)
+                    lstm_test_dataset = Subset(lstm_dataset, test_index)
+                    if use_early_stop:
+                        transformer_train_dataset, transformer_val_dataset = random_split(transformer_train_dataset, [0.8, 0.2])
+                        lstm_train_dataset, lstm_val_dataset = random_split(lstm_train_dataset, [0.8, 0.2])
+                else:
+                    train_dataset = Subset(dataset, train_index)
+                    test_dataset = Subset(dataset, test_index)
+                    val_dataset = None
+                    if use_early_stop:
+                        train_dataset, val_dataset = random_split(train_dataset, [0.8, 0.2])
+                    transformer_train_dataset = train_dataset
+                    transformer_val_dataset = val_dataset
+                    transformer_test_dataset = test_dataset
+                    lstm_train_dataset = train_dataset
+                    lstm_val_dataset = val_dataset
+                    lstm_test_dataset = test_dataset
+                    del train_dataset, test_dataset, val_dataset
                 if not use_parallel:
                     for model_name, model_config in model_data.items():
                         if model_name == "lstm":
                             model = MyLSTMClassifier(num_classes, **model_config["hyperparameters"])
                             device = LSTM_DEVICE
-                        else:
-                            model = MyModel(num_features, num_classes, **model_config["hyperparameters"])
-                            device = TRANSFORMER_DEVICE
-                        metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False, device=device)
-                        accuracy, precision, recall, f1_score = train_test_model(None, model, model_config, train_dataset, test_dataset, val_dataset, metrics, device)
-                        metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1], [fold+1], accuracy, precision, recall, f1_score])))
-                        if model_name == "lstm":
+                            metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False, device=device)
+                            accuracy, precision, recall, f1_score = train_test_model(None, model, model_config, lstm_train_dataset, 
+                                                                                     lstm_test_dataset, lstm_val_dataset, metrics, device)
+                            metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1], [fold+1], accuracy, precision, recall, f1_score])))
                             lstm_metrics_df_list.append(metrics_df)
                         else:
-                            transformer_metrics_df_list.append(metrics_df)
+                            model = MyModel(transformer_num_features, num_classes, **model_config["hyperparameters"])
+                            device = TRANSFORMER_DEVICE
+                            metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False, device=device)
+                            accuracy, precision, recall, f1_score = train_test_model(None, model, model_config, transformer_train_dataset, 
+                                                                                     transformer_test_dataset, transformer_val_dataset, metrics, device)
+                            metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1], [fold+1], accuracy, precision, recall, f1_score])))
+                            transformer_metrics_df_list.append(metrics_df)                           
                         del model
                 else:
                     transformer_config = model_data["transformer"]
@@ -195,14 +231,14 @@ if __name__ == "__main__":
                     transformer_par_conn, transformer_child_conn = mp.Pipe()
                     lstm_par_conn, lstm_child_conn = mp.Pipe()
                     transformer_process = mp.Process(target=train_test_model, daemon=False, args=(transformer_child_conn,
-                                                                                    MyModel(num_features, num_classes, **transformer_config["hyperparameters"]),
-                                                                                    transformer_config,
-                                                                                    train_dataset, test_dataset, val_dataset, transformer_metrics,
+                                                                                    MyModel(transformer_num_features, num_classes, **transformer_config["hyperparameters"]),
+                                                                                    transformer_config, transformer_train_dataset, 
+                                                                                    transformer_test_dataset, transformer_val_dataset, transformer_metrics,
                                                                                     None, TRANSFORMER_DEVICE_ID))
                     lstm_process = mp.Process(target=train_test_model, daemon=False, args=(lstm_child_conn,
                                                                                 MyLSTMClassifier(num_classes, **lstm_config["hyperparameters"]),
-                                                                                lstm_config,
-                                                                                train_dataset, test_dataset, val_dataset, lstm_metrics,
+                                                                                lstm_config, lstm_train_dataset, 
+                                                                                lstm_test_dataset, lstm_val_dataset, lstm_metrics,
                                                                                 None, LSTM_DEVICE_ID))
                     transformer_process.start()
                     lstm_process.start()
