@@ -4,7 +4,7 @@ The code and results repository of my thesis "Cyberattack detection on network l
 
 ## Licensing
 
-All source code files (Python scripts and Jupyter notebooks) are licensed under the [GNU General Public License v3.0](./LICENSE). All diagrams, figures and result reports in the `tests/` directory are licensed under the [Creative Commons Attribution–NonCommercial–ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0). You may share and adapt these materials for **non-commercial purposes**, provided you give appropriate credit and distribute any derivatives under the same license. For **commercial use or redistribution**, please contact the author to obtain written permission.
+All source code files (Python scripts and Jupyter notebooks) are licensed under the [GNU General Public License v3.0](./LICENSE). All diagrams, figures and result reports in the `results` directory are licensed under the [Creative Commons Attribution–NonCommercial–ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0). You may share and adapt these materials for **non-commercial purposes**, provided you give appropriate credit and distribute any derivatives under the same license. For **commercial use or redistribution**, please contact the author to obtain written permission.
 
 ## Project setup
 In order to run the experiments there are some python packages that need to be installed first. There are 2 ways to install them on project level and not system-wide.
@@ -57,7 +57,7 @@ Please note that for the model hyperparameter tuning, search space is limited. T
 | `mlp_dropout`        | 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4 |
 
 ## Experiment results
-Results are located under `tests/results` folder and contains the following directories:
+Results are located under `results` folder and contains the following directories:
 - `images/`: contains the generated plots and diagrams for all experiments. For thesis results presentation purposes the subdirectories that were uses are `with_network_specific_features/` and `without_network_specific_features_improved/`.
 
 | Directory name              | Results type                                                                      |

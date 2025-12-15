@@ -201,6 +201,7 @@ if __name__ == "__main__":
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}, datatype: {datatype}")
     df_list = []
     local_test_df_list = []  # needed for zero/few shot transfer learning, otherwise is unused
+    attack_shap_values = []
     if use_binary_metrics:
         metric_names = ["Run #", "Fold #", "Accuracy", "Precision", "Recall", "F1 Score"]
         training_metric = BinaryAccuracy(device=DEVICE)
@@ -336,12 +337,15 @@ if __name__ == "__main__":
                     del train_loader, test_loader
                     df_list.append(metrics_df)
                     print("Metrics:\n", metrics_df, sep='')
+                    shap_values = ttutils.plot_shap_values(final_model, dataset, category_map, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}.png"))
+                    attack_shap_values.append(shap_values[list(category_map.values()).index("Attack")])
 
                 else:
                     strat_kfold = StratifiedKFold(n_splits=folds, shuffle=True)
                     final_model = None
                     show_summary = True
                     multiclass_confusion_matrix = np.zeros(shape=(num_classes, num_classes), dtype=np.uint64)
+                    local_attack_shap_values = []
                     for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
                         metrics = ttutils.prepare_test_metrics(num_classes, DEVICE, use_binary_metrics)
                         if use_transformer:
@@ -389,9 +393,14 @@ if __name__ == "__main__":
                         df_list.append(metrics_df)
                         print("Metrics:\n", metrics_df, sep='')
                         print("-"*50)
+                        shap_values = ttutils.plot_shap_values(final_model, dataset, category_map, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}_{fold+1}.png"))
+                        local_attack_shap_values.append(shap_values[list(category_map.values()).index("Attack")])
+                    
+                    local_mean_shap_values = np.array(local_attack_shap_values).mean(axis=0)
+                    attack_shap_values.append(local_mean_shap_values)
+
                 print(f"[Run {i+1}] Multiclass confusion matrix:\n", multiclass_confusion_matrix, sep='')
                 ttutils.plot_confusion_matrix(multiclass_confusion_matrix, category_map, os.path.join(images_dir, f"confusion_matrix_{model_name}_{dataset_name}_{i+1}.png"))
-                ttutils.plot_shap_values(final_model, dataset, category_map, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}.png"))
     except Exception as e:
         print("Exception occurred:", e, file=sys.stderr)
     finally:
@@ -403,4 +412,8 @@ if __name__ == "__main__":
                 local_test_results_df.to_csv(os.path.join(results_dir, f"local_test_results_{model_name}_{dataset_name}_{tl_type}.csv"))
                 results_df.to_csv(os.path.join(results_dir, f"results_{model_name}_{dataset_name}_{tl_type}.csv"))
             else:
+                mean_attack_shap_values = np.array(attack_shap_values).mean(axis=0)
+                feature_importance = zip(feature_names, mean_attack_shap_values)
+                feature_importance_series = pd.DataFrame(feature_importance, columns=["Feature", "SHAP_value"])
+                feature_importance_series.to_csv(os.path.join(results_dir, f"attack_shap_values_{model_name}_{dataset_name}.csv"), index_label='Index')
                 results_df.to_csv(os.path.join(results_dir, f"results_{model_name}_{dataset_name}.csv"))

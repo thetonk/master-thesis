@@ -176,7 +176,9 @@ def plot_shap_values(model, dataset, category_map, num_classes, feature_names, p
     rows = num_classes // charts_per_row + ((num_classes % charts_per_row) != 0)
     fig, axes = plt.subplots(rows, charts_per_row, dpi=500, figsize=(charts_per_row * 4, rows * 3))
     axes = axes.ravel()
+    shap_values_per_class = []
     for i in range(num_classes):
+        shap_values_per_class.append(np.mean(np.abs(shap_values[i]), axis=1))
         # Create Explanation object for class 0 (you can loop for others)
         shap_explanation = shap.Explanation(
             values=shap_values[i].T,  # SHAP values for class i
@@ -208,6 +210,7 @@ def plot_shap_values(model, dataset, category_map, num_classes, feature_names, p
     plt.tight_layout(pad=0.8)
     plt.savefig(plot_filename)
     plt.close(fig)
+    return shap_values_per_class
 
 
 def prepare_test_metrics(num_classes: int, device: torch.device = torch.device("cuda"), binary_class=False, confusion_matrix=True) -> list[Metric]:
