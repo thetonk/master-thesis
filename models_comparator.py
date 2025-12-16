@@ -83,7 +83,7 @@ if __name__ == "__main__":
         epochs_lstm = args.lstm_epochs
         dataset_directory = args.dataset_directory
         dataset_percentage = args.dataset_percentage
-        remove_features = args.remove_featues
+        remove_features = args.remove_features
         if num_folds < 2:
             raise ValueError("Number of folds must be at least 2.")
         if num_runs < 1 or epochs_transformer < 1 or epochs_lstm < 1:
@@ -144,14 +144,15 @@ if __name__ == "__main__":
     if remove_features:
         dataset_name += "_removed_merged_ds"
         transformer_loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_directory, label_column, transformer_dropped_columns, rows_per_dataset, balance_classes=True)
-        lstm_loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_directory, label_column, lstm_dropped_columns, rows_per_dataset, balance_classes=True)
         transformer_dataset = transformer_loaded_dataset.dataset
-        lstm_dataset = lstm_loaded_dataset.dataset
         transformer_num_features = transformer_loaded_dataset.num_features
         num_rows = transformer_loaded_dataset.num_rows
         num_classes = transformer_loaded_dataset.num_classes
         datatype = transformer_loaded_dataset.dtype
-        del transformer_loaded_dataset, lstm_loaded_dataset
+        del transformer_loaded_dataset
+        lstm_loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_directory, label_column, lstm_dropped_columns, rows_per_dataset, balance_classes=True)
+        lstm_dataset = lstm_loaded_dataset.dataset
+        del lstm_loaded_dataset
         X = transformer_dataset.tensors[0]
         y = transformer_dataset.tensors[1]
     else:
