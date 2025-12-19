@@ -19,8 +19,8 @@ module load gcc/13.2.0 python/3.11 cuda/12.4.0
 cd ~/thesis-task
 source .venv/bin/activate
 
-if [[ $# -ne 9 ]]; then
-  echo "Invalid number of arguments! You must enter 8 arguments!"
+if [[ $# -lt 9 ]]; then
+  echo "Invalid number of arguments! You must enter at least 8 arguments!"
   echo "Usage: $0 <run_mode> <dataset_directory> <transformer_config> <transformer_epochs> <lstm_config> <lstm_epochs> <label_column> <num_runs> <num_folds>"
   echo "Run mode can be either 'sequential' or 'parallel'"
 fi
@@ -39,7 +39,7 @@ shift 9
 shopt -s nocasematch
 
 if [[ "$run_mode" == "parallel" ]]; then
-  srun python3 -u models_comparator.py -r -p -d "$dataset_dir" -tc "$transformer_config" -te "$transformer_epochs" -lc "$lstm_config" -le "$lstm_epochs" "$@" "$label_column" "$num_runs" "$num_folds"
+  srun python3 -u models_comparator.py -r -e -p -d "$dataset_dir" -tc "$transformer_config" -te "$transformer_epochs" -lc "$lstm_config" -le "$lstm_epochs" "$@" "$label_column" "$num_runs" "$num_folds"
 else
-  srun python3 -u models_comparator.py -r -d "$dataset_dir" -tc "$transformer_config" -te "$transformer_epochs" -lc "$lstm_config" -le "$lstm_epochs" "$@" "$label_column" "$num_runs" "$num_folds"
+  srun python3 -u models_comparator.py -r -e -d "$dataset_dir" -tc "$transformer_config" -te "$transformer_epochs" -lc "$lstm_config" -le "$lstm_epochs" "$@" "$label_column" "$num_runs" "$num_folds"
 fi

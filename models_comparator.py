@@ -33,12 +33,12 @@ def train_test_model(pipe, model, model_config, train_dataset,
         device = torch.device(f"cuda:{device_id}")
     model = model.to(device)
     train_metric = BinaryAccuracy(device=device)
-    train_loader = DataLoader(train_dataset, batch_size, shuffle=True, persistent_workers=True, num_workers=N_WORKERS, pin_memory=True)
-    test_loader = DataLoader(test_dataset, batch_size, persistent_workers=True, num_workers=N_WORKERS, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=N_WORKERS, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size, num_workers=N_WORKERS, pin_memory=True)
     val_loader = None
     early_stopper = None
     if val_dataset is not None:
-        val_loader = DataLoader(val_dataset, batch_size, persistent_workers=True, num_workers=N_WORKERS, pin_memory=True)
+        val_loader = DataLoader(val_dataset, batch_size, num_workers=N_WORKERS, pin_memory=True)
         early_stopper = ttutils.EarlyStopping(ttutils.get_patience(epochs), 2.5e-3)
     with tempfile.NamedTemporaryFile(suffix=".pt") as tmpfile:
         ttutils.train_model(model, tmpfile.name, train_loader, val_loader, early_stopper=early_stopper,
@@ -105,9 +105,9 @@ if __name__ == "__main__":
             transformer_dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
             lstm_dropped_columns = ["Timestamp", "Fwd Seg Size Min"]
             print("For Transformer model the following features are being dropped:")
-            print(*transformer_dropped_columns, sep='')
+            print(*transformer_dropped_columns, sep=',')
             print("For LSTM the following features are being dropped:")
-            print(*lstm_dropped_columns, sep='')
+            print(*lstm_dropped_columns, sep=',')
         else:
             dropped_columns = ["Timestamp"]
             print("The following features will be ignored:")
@@ -283,7 +283,7 @@ if __name__ == "__main__":
             if dataset_percentage < 100:
                 transformer_results_filename += f"_{dataset_percentage}"
                 lstm_results_filename += f"_{dataset_percentage}"
-                pvalues_filename += f"{dataset_percentage}"
+                pvalues_filename += f"_{dataset_percentage}"
             transformer_results_df.to_csv(os.path.join(results_dir, f"{transformer_results_filename}.csv"))
             lstm_results_df.to_csv(os.path.join(results_dir, f"{lstm_results_filename}.csv"))
             pvalues_df.to_csv(os.path.join(results_dir, f"{pvalues_filename}.csv"))

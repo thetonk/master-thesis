@@ -79,11 +79,12 @@ class CSVDataset():
         if balance_classes:
             num_classes = len(labels.cat.categories)
             minimum_class_samples = labels.cat.codes.value_counts().min()
+            required_samples_per_class = int(rows_limit / num_classes)
             if rows_limit > 1:
-                rows_limit_per_class = min(minimum_class_samples, int(rows_limit / num_classes))
+                rows_limit_per_class = min(minimum_class_samples, required_samples_per_class)
             else:
                 rows_limit_per_class = minimum_class_samples
-            if rows_limit_per_class < (rows_limit / num_classes):
+            if rows_limit_per_class < required_samples_per_class:
                 print(f"Warning: dataset {self.dataset_path} minority class has less samples than the required! Has: {minimum_class_samples} samples!", file=sys.stderr)
             indexes = []
             for category in labels.cat.categories:
