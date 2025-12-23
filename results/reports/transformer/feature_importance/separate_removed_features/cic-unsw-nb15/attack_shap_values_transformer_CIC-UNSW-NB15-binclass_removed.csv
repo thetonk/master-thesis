@@ -1,0 +1,77 @@
+Index,Feature,SHAP_value
+0,Src Port,0.20433818774118614
+1,Dst Port,0.21891504223801045
+2,Protocol,0.009674538915909997
+3,Flow Duration,2.2002968702997183
+4,Tot Fwd Pkts,0.0
+5,Tot Bwd Pkts,0.0
+6,TotLen Fwd Pkts,0.0
+7,TotLen Bwd Pkts,0.0
+8,Fwd Pkt Len Max,0.0
+9,Fwd Pkt Len Min,0.0
+10,Fwd Pkt Len Mean,0.0
+11,Fwd Pkt Len Std,0.0
+12,Bwd Pkt Len Max,0.0
+13,Bwd Pkt Len Min,0.0
+14,Bwd Pkt Len Mean,0.0
+15,Bwd Pkt Len Std,0.0
+16,Flow Byts/s,0.0
+17,Flow Pkts/s,0.0
+18,Flow IAT Mean,1.9918967223327815
+19,Flow IAT Std,4.390481608230443
+20,Flow IAT Max,4.132202569644328
+21,Flow IAT Min,0.002570009165668396
+22,Fwd IAT Tot,0.0
+23,Fwd IAT Mean,4.465242315343571
+24,Fwd IAT Std,2.2837820543184355
+25,Fwd IAT Max,3.302673393380347
+26,Fwd IAT Min,0.00631776719683613
+27,Bwd IAT Tot,0.0
+28,Bwd IAT Mean,4.15445239363805
+29,Bwd IAT Std,1.4399716839780066
+30,Bwd IAT Max,3.1727791999559223
+31,Bwd IAT Min,0.00811191776750764
+32,Fwd PSH Flags,8.842988791002427e-10
+33,Bwd PSH Flags,0.0
+34,Fwd URG Flags,0.0
+35,Bwd URG Flags,0.0
+36,Fwd Header Len,0.0
+37,Bwd Header Len,0.0
+38,Fwd Pkts/s,0.0
+39,Bwd Pkts/s,0.0
+40,Pkt Len Min,0.0
+41,Pkt Len Max,0.0
+42,Pkt Len Mean,0.0
+43,Pkt Len Std,0.0
+44,Pkt Len Var,0.0
+45,FIN Flag Cnt,0.0
+46,SYN Flag Cnt,0.0
+47,RST Flag Cnt,0.0
+48,PSH Flag Cnt,0.0
+49,ACK Flag Cnt,0.0
+50,URG Flag Cnt,0.0
+51,CWE Flag Count,0.0
+52,ECE Flag Cnt,0.0
+53,Down/Up Ratio,0.004294180582993479
+54,Pkt Size Avg,0.0
+55,Fwd Seg Size Avg,0.0
+56,Bwd Seg Size Avg,0.0
+57,Fwd Byts/b Avg,0.0
+58,Fwd Pkts/b Avg,0.0
+59,Fwd Blk Rate Avg,0.0
+60,Bwd Byts/b Avg,0.0
+61,Bwd Pkts/b Avg,0.0
+62,Bwd Blk Rate Avg,0.0
+63,Subflow Fwd Pkts,0.0
+64,Subflow Fwd Byts,0.0
+65,Subflow Bwd Pkts,0.0
+66,Subflow Bwd Byts,0.0
+67,Init Fwd Win Byts,0.0
+68,Init Bwd Win Byts,0.0
+69,Fwd Act Data Pkts,0.012236514480365886
+70,Fwd Seg Size Min,0.03249926176454284
+71,Active Mean,0.01830530959164652
+72,Active Std,0.017922319547419817
+73,Active Max,0.03314172032546671
+74,Active Min,0.03248426505439851
+75,Idle Std,0.011379671836747127

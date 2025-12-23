@@ -1,0 +1,77 @@
+Index,Feature,SHAP_value
+0,Src Port,0.4281261734165421
+1,Dst Port,1.3921267084642461
+2,Protocol,0.00280905375066503
+3,Flow Duration,22.442839122245225
+4,Tot Fwd Pkts,0.0
+5,Tot Bwd Pkts,0.0
+6,TotLen Fwd Pkts,0.0
+7,TotLen Bwd Pkts,0.0
+8,Fwd Pkt Len Max,0.0
+9,Fwd Pkt Len Min,0.0
+10,Fwd Pkt Len Mean,0.0
+11,Fwd Pkt Len Std,0.0
+12,Bwd Pkt Len Max,0.0
+13,Bwd Pkt Len Min,0.0
+14,Bwd Pkt Len Mean,0.0
+15,Bwd Pkt Len Std,0.0
+16,Flow Byts/s,0.0
+17,Flow Pkts/s,0.0
+18,Flow IAT Mean,6.70597440000882
+19,Flow IAT Std,12.867343390605765
+20,Flow IAT Max,26.05359845968217
+21,Flow IAT Min,2.2721026450876005
+22,Fwd IAT Tot,0.0
+23,Fwd IAT Mean,2.843644835976453
+24,Fwd IAT Std,3.141499984110915
+25,Fwd IAT Max,8.302233564146386
+26,Fwd IAT Min,2.022903394615893
+27,Bwd IAT Tot,0.0
+28,Bwd IAT Mean,6.134521191847847
+29,Bwd IAT Std,4.006071635701636
+30,Bwd IAT Max,3.9846435416960775
+31,Bwd IAT Min,0.7227386907643438
+32,Fwd PSH Flags,0.02427601423377513
+33,Bwd PSH Flags,0.0
+34,Fwd URG Flags,0.0
+35,Bwd URG Flags,0.0
+36,Fwd Header Len,0.0
+37,Bwd Header Len,0.0
+38,Fwd Pkts/s,0.0
+39,Bwd Pkts/s,0.0
+40,Pkt Len Min,0.0
+41,Pkt Len Max,0.0
+42,Pkt Len Mean,0.0
+43,Pkt Len Std,0.0
+44,Pkt Len Var,0.0
+45,FIN Flag Cnt,0.0
+46,SYN Flag Cnt,0.0
+47,RST Flag Cnt,0.0
+48,PSH Flag Cnt,0.0
+49,ACK Flag Cnt,0.0
+50,URG Flag Cnt,0.0
+51,CWE Flag Count,0.0
+52,ECE Flag Cnt,0.0
+53,Down/Up Ratio,0.010927200958640925
+54,Pkt Size Avg,0.0
+55,Fwd Seg Size Avg,0.0
+56,Bwd Seg Size Avg,0.0
+57,Fwd Byts/b Avg,0.0
+58,Fwd Pkts/b Avg,0.0
+59,Fwd Blk Rate Avg,0.0
+60,Bwd Byts/b Avg,0.0
+61,Bwd Pkts/b Avg,0.0
+62,Bwd Blk Rate Avg,0.0
+63,Subflow Fwd Pkts,0.0
+64,Subflow Fwd Byts,0.0
+65,Subflow Bwd Pkts,0.0
+66,Subflow Bwd Byts,0.0
+67,Init Fwd Win Byts,0.0
+68,Init Bwd Win Byts,0.0
+69,Fwd Act Data Pkts,0.2994564997057429
+70,Fwd Seg Size Min,0.038457378363774
+71,Active Mean,0.014793770146019824
+72,Active Std,0.0009743705280490841
+73,Active Max,0.016957391797106675
+74,Active Min,0.01034118994048933
+75,Idle Std,0.004062315106646756
