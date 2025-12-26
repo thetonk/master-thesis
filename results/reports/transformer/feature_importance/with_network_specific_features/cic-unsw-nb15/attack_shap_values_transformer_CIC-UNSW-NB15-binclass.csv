@@ -1,0 +1,82 @@
+Index,Feature,SHAP_value
+0,Src IP,3.9149994379136515
+1,Src Port,6.0244666804050375e-06
+2,Dst IP,0.24935957390213287
+3,Dst Port,8.267536222343665e-06
+4,Protocol,5.332924170762713e-10
+5,Flow Duration,0.0007726729498662648
+6,Tot Fwd Pkts,0.0
+7,Tot Bwd Pkts,0.0
+8,TotLen Fwd Pkts,0.0
+9,TotLen Bwd Pkts,0.0
+10,Fwd Pkt Len Max,0.0
+11,Fwd Pkt Len Min,0.0
+12,Fwd Pkt Len Mean,0.0
+13,Fwd Pkt Len Std,0.0
+14,Bwd Pkt Len Max,0.0
+15,Bwd Pkt Len Min,0.0
+16,Bwd Pkt Len Mean,0.0
+17,Bwd Pkt Len Std,0.0
+18,Flow Byts/s,0.0
+19,Flow Pkts/s,0.0
+20,Flow IAT Mean,9.964447706218454e-05
+21,Flow IAT Std,0.0002166949549816952
+22,Flow IAT Max,0.000624488362047088
+23,Flow IAT Min,4.991280543687392e-10
+24,Fwd IAT Tot,0.0
+25,Fwd IAT Mean,0.00011395149191779134
+26,Fwd IAT Std,0.00023105444347730348
+27,Fwd IAT Max,0.00046976392281032343
+28,Fwd IAT Min,8.546991229509345e-10
+29,Bwd IAT Tot,0.0
+30,Bwd IAT Mean,4.429460402652826e-05
+31,Bwd IAT Std,8.798560027304887e-05
+32,Bwd IAT Max,0.0001974963876554975
+33,Bwd IAT Min,4.658229464750494e-10
+34,Fwd PSH Flags,9.759645383522474e-14
+35,Bwd PSH Flags,0.0
+36,Fwd URG Flags,0.0
+37,Bwd URG Flags,0.0
+38,Fwd Header Len,0.0
+39,Bwd Header Len,0.0
+40,Fwd Pkts/s,0.0
+41,Bwd Pkts/s,0.0
+42,Pkt Len Min,0.0
+43,Pkt Len Max,0.0
+44,Pkt Len Mean,0.0
+45,Pkt Len Std,0.0
+46,Pkt Len Var,0.0
+47,FIN Flag Cnt,0.0
+48,SYN Flag Cnt,0.0
+49,RST Flag Cnt,0.0
+50,PSH Flag Cnt,0.0
+51,ACK Flag Cnt,0.0
+52,URG Flag Cnt,0.0
+53,CWE Flag Count,0.0
+54,ECE Flag Cnt,0.0
+55,Down/Up Ratio,2.517342626295386e-10
+56,Pkt Size Avg,0.0
+57,Fwd Seg Size Avg,0.0
+58,Bwd Seg Size Avg,0.0
+59,Fwd Byts/b Avg,0.0
+60,Fwd Pkts/b Avg,0.0
+61,Fwd Blk Rate Avg,0.0
+62,Bwd Byts/b Avg,0.0
+63,Bwd Pkts/b Avg,0.0
+64,Bwd Blk Rate Avg,0.0
+65,Subflow Fwd Pkts,0.0
+66,Subflow Fwd Byts,0.0
+67,Subflow Bwd Pkts,0.0
+68,Subflow Bwd Byts,0.0
+69,Init Fwd Win Byts,0.0
+70,Init Bwd Win Byts,0.0
+71,Fwd Act Data Pkts,5.3499017601590345e-09
+72,Fwd Seg Size Min,3.0129441934190166e-09
+73,Active Mean,2.998247265028872e-05
+74,Active Std,3.0660354238526764e-05
+75,Active Max,6.79521916667785e-05
+76,Active Min,3.1510930667555663e-05
+77,Idle Mean,0.0001258629962549109
+78,Idle Std,3.0029927258880917e-06
+79,Idle Max,8.175464986651244e-05
+80,Idle Min,0.00019494377712127943
