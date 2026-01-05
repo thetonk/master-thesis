@@ -19,7 +19,7 @@ from torcheval.metrics import BinaryAccuracy
 from sklearn.model_selection import StratifiedKFold
 from utils import dataset_utils
 from utils import train_test_utils as ttutils
-from utils.models import MyModel, MyLSTMClassifier
+from utils.models import MyTransformerModel, MyLSTMClassifier
 from utils.exceptions import handle_slurm_exception
 
 N_WORKERS = 8
@@ -214,7 +214,7 @@ if __name__ == "__main__":
                             metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1], [fold+1], accuracy, precision, recall, f1_score])))
                             lstm_metrics_df_list.append(metrics_df)
                         else:
-                            model = MyModel(transformer_num_features, num_classes, **model_config["hyperparameters"])
+                            model = MyTransformerModel(transformer_num_features, num_classes, **model_config["hyperparameters"])
                             device = TRANSFORMER_DEVICE
                             metrics = ttutils.prepare_test_metrics(num_classes, binary_class=True, confusion_matrix=False, device=device)
                             accuracy, precision, recall, f1_score = train_test_model(None, model, model_config, transformer_train_dataset, 
@@ -232,7 +232,7 @@ if __name__ == "__main__":
                     transformer_par_conn, transformer_child_conn = mp.Pipe()
                     lstm_par_conn, lstm_child_conn = mp.Pipe()
                     transformer_process = mp.Process(target=train_test_model, daemon=False, args=(transformer_child_conn,
-                                                                                    MyModel(transformer_num_features, num_classes, **transformer_config["hyperparameters"]),
+                                                                                    MyTransformerModel(transformer_num_features, num_classes, **transformer_config["hyperparameters"]),
                                                                                     transformer_config, transformer_train_dataset, 
                                                                                     transformer_test_dataset, transformer_val_dataset, transformer_metrics,
                                                                                     None, TRANSFORMER_DEVICE_ID))

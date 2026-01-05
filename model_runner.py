@@ -18,7 +18,7 @@ from sklearn.model_selection import StratifiedKFold, LeaveOneOut
 import matplotlib
 from utils import dataset_utils
 from utils import train_test_utils as ttutils
-from utils.models import MyModel, MyLSTMClassifier
+from utils.models import MyTransformerModel, MyLSTMClassifier, MyCNNModel, ModelTypes
 from utils.exceptions import handle_slurm_exception, InvalidArgumentException
 
 #SEED = 42
@@ -33,7 +33,7 @@ if __name__ == "__main__":
                                           help="Specify directory of CSV files used for train dataset")
     custom_train_test_parser.add_argument("--test-dir", type=str,
                                           help="Specify directory of CSV files used for test dataset")
-    parser.add_argument("model", choices=("lstm", "transformer"), help="The model type")
+    parser.add_argument("model", choices=[model.value for model in ModelTypes], help="The model type")
     parser.add_argument("label_column", type=str, help="The name of the column that will be used as class.", default="Label")
     parser.add_argument("runs", type=int, help="Number of runs. Must be positive", default=1)
     parser.add_argument("folds", type=int, help="Number of folds. Must not be negative. Ignored if used with either few-shot or zero-shot.",default=0)
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     shot_args.add_argument("-z", "--zero-shot", action="store_true", help="Run zero-shot transfer learning")
     shot_args.add_argument("-fs", "--few-shot", type=int, metavar="SAMPLES_PER_CLASS", help="Run few-shot transfer learning with the specified samples per class")
     args = parser.parse_args()
-    use_transformer = True
+    model_name = args.model
     use_custom_train_test = False
     load_directory = False
     zero_shot = False
@@ -63,7 +63,6 @@ if __name__ == "__main__":
         signal.signal(signal.SIGTERM, handle_slurm_exception)
 
     try:
-        model_name = args.model
         config_file = args.config
         use_early_stop = args.early_stop
         use_binary_metrics = args.binary_metrics
@@ -74,8 +73,7 @@ if __name__ == "__main__":
             print("Using custom train test datasets!")
         if use_early_stop:
             print("Using early stopping!")
-        if model_name == "lstm":
-            use_transformer = False
+        if model_name == ModelTypes.LSTM:
             if config_file is None:
                 config_file = os.path.join(raytune_results_dir, "test_raytune_lstm", "best_config.json")
                 print(f"Config file not specified! Defaulting to {config_file}!")
@@ -115,10 +113,12 @@ if __name__ == "__main__":
         if args.remove_features:
             #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
             #                   "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
-            if use_transformer:
+            if model_name == ModelTypes.TRANSFORMER:
                 dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
-            else:
+            elif model_name == ModelTypes.LSTM:
                 dropped_columns = ["Timestamp", "Fwd Seg Size Min"]
+            else:
+                raise NotImplementedError("Feature removal for CNN is currently not supported!")
         else:
             dropped_columns = ["Timestamp"]
         print("The following features will be ignored:")
@@ -247,21 +247,26 @@ if __name__ == "__main__":
                         val_loader = DataLoader(val_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
                     test_metrics = ttutils.prepare_test_metrics(num_classes, DEVICE, use_binary_metrics)
                     local_test_metrics = ttutils.prepare_test_metrics(num_classes, DEVICE, use_binary_metrics)
-                    if use_transformer:
-                        model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
-                    else:
+                    if model_name == ModelTypes.TRANSFORMER:
+                        model = MyTransformerModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
+                    elif model_name == ModelTypes.LSTM:
                         model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
+                    else:
+                        model = MyCNNModel(num_classes, 5, 1, 128).to(DEVICE)
                     if show_summary:
-                        torchinfo.summary(model, input_size=(batch_size, num_features))
+                        #if model_name is not ModelTypes.CNN:
+                            #torchinfo.summary(model, input_size=(batch_size, num_features))
                         show_summary = False
                     print("STARTING TRAINING SESSION!!!")
                     ttutils.train_model(model, model_filename, train_loader, val_loader, training_metric, epochs=epochs, device=DEVICE,
                                 learning_rate=learning_rate, early_stopper=early_stopper)
                     print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
-                    if use_transformer:
-                        final_model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
-                    else:
+                    if model_name == ModelTypes.TRANSFORMER:
+                        final_model = MyTransformerModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
+                    elif model_name == ModelTypes.LSTM:
                         final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
+                    else:
+                        final_model = MyCNNModel(num_classes, 5, 1, 128).to(DEVICE)
                     final_model.load_state_dict(torch.load(model_filename, weights_only=True))
                     multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = ttutils.test_model(
                         final_model, test_loader, test_metrics, device=DEVICE)
@@ -298,11 +303,14 @@ if __name__ == "__main__":
                 if folds == 0:
                     print("Training and testing model with a random split of 80% train and 20% test!")
                     metrics = ttutils.prepare_test_metrics(num_classes, DEVICE, use_binary_metrics)
-                    if use_transformer:
-                        model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
-                    else:
+                    if model_name == ModelTypes.TRANSFORMER:
+                        model = MyTransformerModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
+                    elif model_name == ModelTypes.LSTM:
                         model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
+                    else:
+                        model = MyCNNModel(num_classes, 5, 1, 128).to(DEVICE)
                     torchinfo.summary(model, input_size=(batch_size, num_features))
+                    print(sum(p.numel() for p in model.parameters() if p.requires_grad))
                     val_loader = None
                     val_dataset = None
                     early_stopper = None
@@ -319,10 +327,12 @@ if __name__ == "__main__":
                     ttutils.train_model(model, model_filename, train_loader, val_loader, training_metric, epochs=epochs,
                                 device=DEVICE, learning_rate=learning_rate, early_stopper=early_stopper)
                     print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
-                    if use_transformer:
-                        final_model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
-                    else:
+                    if model_name == ModelTypes.TRANSFORMER:
+                        final_model = MyTransformerModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
+                    elif model_name == ModelTypes.LSTM:
                         final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
+                    else:
+                        final_model = MyCNNModel(num_classes, 5, 1, 128).to(DEVICE)
                     final_model.load_state_dict(torch.load(model_filename, weights_only=True))
                     multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = ttutils.test_model(final_model, test_loader, metrics, device=DEVICE)
                     if use_binary_metrics:
@@ -348,12 +358,18 @@ if __name__ == "__main__":
                     local_attack_shap_values = []
                     for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
                         metrics = ttutils.prepare_test_metrics(num_classes, DEVICE, use_binary_metrics)
-                        if use_transformer:
-                            model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
-                        else:
+                        if model_name == ModelTypes.TRANSFORMER:
+                            model = MyTransformerModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
+                        elif model_name == ModelTypes.LSTM:
                             model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
+                        else:
+                            model = MyCNNModel(num_classes, 5, 1, 128).to(DEVICE)
                         if show_summary:
                             torchinfo.summary(model, input_size=(batch_size, num_features))
+                            #dummy_batch = torch.randn(batch_size, num_features, device=DEVICE)
+                            #model(dummy_batch)
+                            #del dummy_batch
+                            #print(sum(p.numel() for p in model.parameters() if p.requires_grad))
                             show_summary = False
                         print("-"*50)
                         print(f"Fold {fold+1}/{folds}")
@@ -373,10 +389,12 @@ if __name__ == "__main__":
                         ttutils.train_model(model, model_filename, train_loader, val_loader, metric=training_metric, epochs=epochs,
                                     device=DEVICE, learning_rate=learning_rate, early_stopper=early_stopper)
                         print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
-                        if use_transformer:
-                            final_model = MyModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
-                        else:
+                        if model_name == ModelTypes.TRANSFORMER:
+                            final_model = MyTransformerModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
+                        elif model_name == ModelTypes.LSTM:
                             final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
+                        else:
+                            final_model = MyCNNModel(num_classes, 5, 1, 128).to(DEVICE)
                         final_model.load_state_dict(torch.load(model_filename, weights_only=True))
                         multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, fold_confusion_matrix = ttutils.test_model(final_model, test_loader, metrics, device=DEVICE)
                         multiclass_confusion_matrix += fold_confusion_matrix.astype(np.uint64)

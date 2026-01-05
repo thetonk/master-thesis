@@ -5,6 +5,12 @@
 
 import torch
 import torch.nn as nn
+import enum
+
+class ModelTypes(enum.StrEnum):
+    CNN = enum.auto()
+    TRANSFORMER = enum.auto()
+    LSTM = enum.auto()
 
 
 class EncoderTransformer(nn.Module):
@@ -51,7 +57,7 @@ class MLPClassifier(nn.Module):
         return self.layers(x)
     
 
-class MyModel(nn.Module):
+class MyTransformerModel(nn.Module):
     def __init__(self, num_features: int, num_classes: int, num_encoders:int = 1, num_mlps:int = 1,
                  enc_embedding_dim:int = 128, enc_num_heads:int = 8, enc_ff_neurons:int = 256,
                  enc_ff_dropout:float = 0, enc_attn_dropout:float = 0,
@@ -111,3 +117,35 @@ class MyLSTMClassifier(nn.Module):
         output = self.dropout_layer(output)
         output = self.mlp_classifier(output)
         return output
+
+
+class MyCNNModel(nn.Module):
+    def __init__(self, n_classes, kernel_size, padding, hidden_mlp_neurons, mlp_dropout=0.1, conv_layers=10):
+        super().__init__()
+        cnn_layers = []
+        for _ in range(conv_layers):
+            cnn_layers.append(nn.Sequential(
+                nn.Conv1d(1, 1, kernel_size=kernel_size, padding=padding),
+                nn.GroupNorm(1, 1),
+                nn.LeakyReLU()
+            ))
+        self.cnn_model = nn.Sequential(*cnn_layers)
+        self.global_avg_pool = nn.AdaptiveAvgPool1d(1)
+        self.mlp_classifier = nn.Sequential(
+            nn.LazyLinear(hidden_mlp_neurons),
+            nn.ReLU(),
+            nn.Dropout(mlp_dropout),
+            #nn.Linear(mlp_hidden_neurons, mlp_hidden_neurons),
+            #nn.ReLU(),
+            #nn.Dropout(mlp_dropout),
+            nn.Linear(hidden_mlp_neurons, n_classes)
+        )
+        self.flatten = nn.Flatten()
+
+    def forward(self, x):
+        x = x.unsqueeze(1)
+        x = self.cnn_model(x)
+        x = self.global_avg_pool(x)
+        x = self.flatten(x)
+        x = self.mlp_classifier(x)
+        return x
