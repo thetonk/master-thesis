@@ -1,0 +1,75 @@
+Index,Feature,SHAP_value
+0,Src Port,0.019650167134922954
+1,Dst Port,0.28777438595854393
+2,Protocol,0.048319570247472986
+3,Flow Duration,0.07280896897611958
+4,Tot Fwd Pkts,0.0
+5,Tot Bwd Pkts,0.0
+6,TotLen Fwd Pkts,0.0
+7,TotLen Bwd Pkts,0.0
+8,Fwd Pkt Len Max,0.0
+9,Fwd Pkt Len Min,0.0
+10,Fwd Pkt Len Mean,0.0
+11,Fwd Pkt Len Std,0.0
+12,Bwd Pkt Len Max,0.0
+13,Bwd Pkt Len Min,0.0
+14,Bwd Pkt Len Mean,0.0
+15,Bwd Pkt Len Std,0.0
+16,Flow Byts/s,0.0
+17,Flow Pkts/s,0.0
+18,Flow IAT Mean,0.34077959194101176
+19,Flow IAT Std,0.39362701412114126
+20,Flow IAT Max,0.3780486752126711
+21,Flow IAT Min,0.6533526316595207
+22,Fwd IAT Tot,0.0
+23,Fwd IAT Mean,0.19534472936521907
+24,Fwd IAT Std,0.4995123118540038
+25,Fwd IAT Max,0.4518699231736282
+26,Fwd IAT Min,2.4035952578742394
+27,Bwd IAT Tot,0.0
+28,Bwd IAT Mean,0.34617420074840044
+29,Bwd IAT Std,0.2865243321029066
+30,Bwd IAT Max,0.27120026657556967
+31,Bwd IAT Min,0.8107269361467193
+32,Fwd PSH Flags,0.04786781199186667
+33,Bwd PSH Flags,0.0
+34,Fwd URG Flags,0.0
+35,Bwd URG Flags,0.0
+36,Fwd Header Len,0.0
+37,Bwd Header Len,0.0
+38,Fwd Pkts/s,0.0
+39,Bwd Pkts/s,0.0
+40,Pkt Len Min,0.0
+41,Pkt Len Max,0.0
+42,Pkt Len Mean,0.0
+43,Pkt Len Std,0.0
+44,Pkt Len Var,0.0
+45,FIN Flag Cnt,0.0
+46,SYN Flag Cnt,0.0
+47,RST Flag Cnt,0.0
+48,PSH Flag Cnt,0.0
+49,ACK Flag Cnt,0.0
+50,URG Flag Cnt,0.0
+51,CWE Flag Count,0.0
+52,ECE Flag Cnt,0.0
+53,Down/Up Ratio,0.008798270284368706
+54,Pkt Size Avg,0.0
+55,Fwd Seg Size Avg,0.0
+56,Bwd Seg Size Avg,0.0
+57,Fwd Byts/b Avg,0.0
+58,Fwd Pkts/b Avg,0.0
+59,Fwd Blk Rate Avg,0.0
+60,Bwd Byts/b Avg,0.0
+61,Bwd Pkts/b Avg,0.0
+62,Bwd Blk Rate Avg,0.0
+63,Subflow Fwd Pkts,0.0
+64,Subflow Fwd Byts,0.0
+65,Subflow Bwd Pkts,0.0
+66,Subflow Bwd Byts,0.0
+67,Init Fwd Win Byts,0.0
+68,Fwd Act Data Pkts,0.19120694100138633
+69,Active Mean,0.0050445205869409804
+70,Active Std,0.00021776991532330178
+71,Active Max,0.03299647909113283
+72,Active Min,0.017813784631014757
+73,Idle Std,0.0
