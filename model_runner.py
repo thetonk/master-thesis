@@ -39,7 +39,8 @@ if __name__ == "__main__":
     parser.add_argument("folds", type=int, help="Number of folds. Must not be negative. Ignored if used with either few-shot or zero-shot.",default=0)
     parser.add_argument("epochs", type=int, help="Number of training epochs. Must be positive", default=10)
     parser.add_argument("-c", "--config", type=str, help="Path to hyperparameter configuration file")
-    parser.add_argument("-r", action="store_true", help="Remove network specific features", dest="remove_features")
+    parser.add_argument("-r", action="store_true", help="Remove network specific features according to model type", dest="remove_features")
+    parser.add_argument("-u", "--unified-removal", action="store_true", help="Reemove network specific features regardless of model type")
     parser.add_argument("-e", "--early-stop", action="store_true", help="Use early stopping")
     parser.add_argument("-b", "--binary-metrics", action="store_true", help="Use binary metrics instead of multiclass")
     parser.add_argument("-p", "--dataset-percentage", type=int, help="Percentage of dataset to use (0-100), default is 100", default=100)
@@ -111,15 +112,19 @@ if __name__ == "__main__":
         if folds < 0 or epochs < 1 or num_runs < 1:
             raise ValueError("Please specify valid number of folds and epochs")
         if args.remove_features:
-            #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
-            #                   "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
-            if model_name == ModelTypes.TRANSFORMER:
-                dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
-            elif model_name == ModelTypes.LSTM:
-                dropped_columns = ["Timestamp", "Fwd Seg Size Min"]
+            if args.unified_removal:
+                dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
+                                    "Idle Mean", "Idle Min", "Idle Max"]
             else:
-                raise NotImplementedError("Feature removal for CNN is currently not supported!")
+                if model_name == ModelTypes.TRANSFORMER:
+                    dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
+                elif model_name == ModelTypes.LSTM:
+                    dropped_columns = ["Timestamp", "Fwd Seg Size Min"]
+                else:
+                    raise NotImplementedError("Feature removal for CNN is currently not supported!")
         else:
+            if args.unified_removal:
+                raise InvalidArgumentException("You must enable feature removal in order to use the unified feature removal variant!")
             dropped_columns = ["Timestamp"]
         print("The following features will be ignored:")
         print(*dropped_columns, sep=',')
@@ -142,18 +147,19 @@ if __name__ == "__main__":
         model_file = f"best_model_{model_name}_{dataset_name}"
         csv_dataset = dataset_utils.CSVDataset(dataset_file, label_column, columns_to_drop=dropped_columns, chunk_size=3e+6)
         rows_limit = int(250e+3 * dataset_percentage / 100)
-        csv_dataset.load(balance_classes=True, rows_limit=250e+3)
+        csv_dataset.load(balance_classes=True, rows_limit=rows_limit)
         X, y, category_map, feature_names = csv_dataset.X, csv_dataset.y, csv_dataset.categories, csv_dataset.features
-        num_classes = len(category_map)
+        num_classes = csv_dataset.n_classes
         class_frequencies = y.bincount(minlength=num_classes)
         class_percentages = class_frequencies.float() / y.shape[0]
         print("Class percentages:", class_percentages)
         dataset = TensorDataset(X, y)
-        num_features = X.shape[1]
-        num_rows = X.shape[0]
+        num_features = csv_dataset.n_features
+        num_rows = csv_dataset.n_rows
         datatype = X.dtype
     else:
-        rows_per_dataset = 77140 * dataset_percentage / 100
+        rows_per_dataset = 77140 if use_binary_metrics else 150903
+        rows_per_dataset = rows_per_dataset * dataset_percentage / 100
         if zero_shot or few_shot:
             print(f"Running in {'zero-shot' if zero_shot else 'few-shot'} mode!")
             tl_type = f"{'zero_shot' if zero_shot else 'few_shot'}"
@@ -201,7 +207,7 @@ if __name__ == "__main__":
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}, datatype: {datatype}")
     df_list = []
     local_test_df_list = []  # needed for zero/few shot transfer learning, otherwise is unused
-    attack_shap_values = []  # needed to get feature importance per dataset, for malicious samples
+    total_shap_values = []  # needed to get feature importance per dataset, for malicious samples
     if use_binary_metrics:
         metric_names = ["Run #", "Fold #", "Accuracy", "Precision", "Recall", "F1 Score"]
         training_metric = BinaryAccuracy(device=DEVICE)
@@ -252,10 +258,9 @@ if __name__ == "__main__":
                     elif model_name == ModelTypes.LSTM:
                         model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
                     else:
-                        model = MyCNNModel(num_classes, 5, 1, 128).to(DEVICE)
+                        model = MyCNNModel(num_classes, **model_hyperparameters).to(DEVICE)
                     if show_summary:
-                        #if model_name is not ModelTypes.CNN:
-                            #torchinfo.summary(model, input_size=(batch_size, num_features))
+                        torchinfo.summary(model, input_size=(batch_size, num_features))
                         show_summary = False
                     print("STARTING TRAINING SESSION!!!")
                     ttutils.train_model(model, model_filename, train_loader, val_loader, training_metric, epochs=epochs, device=DEVICE,
@@ -266,7 +271,7 @@ if __name__ == "__main__":
                     elif model_name == ModelTypes.LSTM:
                         final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
                     else:
-                        final_model = MyCNNModel(num_classes, 5, 1, 128).to(DEVICE)
+                        final_model = MyCNNModel(num_classes, **model_hyperparameters).to(DEVICE)
                     final_model.load_state_dict(torch.load(model_filename, weights_only=True))
                     multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = ttutils.test_model(
                         final_model, test_loader, test_metrics, device=DEVICE)
@@ -308,7 +313,7 @@ if __name__ == "__main__":
                     elif model_name == ModelTypes.LSTM:
                         model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
                     else:
-                        model = MyCNNModel(num_classes, 5, 1, 128).to(DEVICE)
+                        model = MyCNNModel(num_classes, **model_hyperparameters).to(DEVICE)
                     torchinfo.summary(model, input_size=(batch_size, num_features))
                     print(sum(p.numel() for p in model.parameters() if p.requires_grad))
                     val_loader = None
@@ -335,27 +340,28 @@ if __name__ == "__main__":
                         final_model = MyCNNModel(num_classes, 5, 1, 128).to(DEVICE)
                     final_model.load_state_dict(torch.load(model_filename, weights_only=True))
                     multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = ttutils.test_model(final_model, test_loader, metrics, device=DEVICE)
+                    shap_values = ttutils.plot_shap_values(final_model, dataset, category_map, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}.png"))   
                     if use_binary_metrics:
                         metrics_df = pd.DataFrame.from_dict(
                             dict(zip(metric_names, [[i + 1], [1],
                                                     multiclass_accuracy, multiclass_precision,
                                                     multiclass_recall, multiclass_f1_score])))
+                        total_shap_values.append(shap_values[list(category_map.values()).index("Attack")])
                     else:
                         metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1], [1],
                                                                                 multiclass_accuracy,multiclass_precision,
                                                                                 multiclass_recall, multiclass_f1_score])))
+                        total_shap_values.append(shap_values)
                     del train_loader, test_loader
                     df_list.append(metrics_df)
                     print("Metrics:\n", metrics_df, sep='')
-                    shap_values = ttutils.plot_shap_values(final_model, dataset, category_map, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}.png"))
-                    attack_shap_values.append(shap_values[list(category_map.values()).index("Attack")])
 
                 else:
                     strat_kfold = StratifiedKFold(n_splits=folds, shuffle=True)
                     final_model = None
                     show_summary = True
                     multiclass_confusion_matrix = np.zeros(shape=(num_classes, num_classes), dtype=np.uint64)
-                    local_attack_shap_values = []
+                    local_shap_values = []
                     for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
                         metrics = ttutils.prepare_test_metrics(num_classes, DEVICE, use_binary_metrics)
                         if model_name == ModelTypes.TRANSFORMER:
@@ -363,13 +369,9 @@ if __name__ == "__main__":
                         elif model_name == ModelTypes.LSTM:
                             model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
                         else:
-                            model = MyCNNModel(num_classes, 5, 1, 128).to(DEVICE)
+                            model = MyCNNModel(num_classes, **model_hyperparameters).to(DEVICE)
                         if show_summary:
                             torchinfo.summary(model, input_size=(batch_size, num_features))
-                            #dummy_batch = torch.randn(batch_size, num_features, device=DEVICE)
-                            #model(dummy_batch)
-                            #del dummy_batch
-                            #print(sum(p.numel() for p in model.parameters() if p.requires_grad))
                             show_summary = False
                         print("-"*50)
                         print(f"Fold {fold+1}/{folds}")
@@ -394,28 +396,29 @@ if __name__ == "__main__":
                         elif model_name == ModelTypes.LSTM:
                             final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
                         else:
-                            final_model = MyCNNModel(num_classes, 5, 1, 128).to(DEVICE)
+                            final_model = MyCNNModel(num_classes, **model_hyperparameters).to(DEVICE)
                         final_model.load_state_dict(torch.load(model_filename, weights_only=True))
                         multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, fold_confusion_matrix = ttutils.test_model(final_model, test_loader, metrics, device=DEVICE)
                         multiclass_confusion_matrix += fold_confusion_matrix.astype(np.uint64)
+                        shap_values = ttutils.plot_shap_values(final_model, dataset, category_map, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}_{fold+1}.png"))
                         if use_binary_metrics:
                             metrics_df = pd.DataFrame.from_dict(dict(
                                 zip(metric_names, [[i + 1], [fold + 1],
                                                    multiclass_accuracy, multiclass_precision,
                                                    multiclass_recall, multiclass_f1_score])))
+                            local_shap_values.append(shap_values[list(category_map.values()).index("Attack")])
                         else:
                             metrics_df = pd.DataFrame.from_dict(dict(zip(metric_names, [[i+1]*num_classes, [fold+1]*num_classes, category_map.values(),
                                                                                     multiclass_accuracy, multiclass_precision,
                                                                                     multiclass_recall, multiclass_f1_score])))
+                            local_shap_values.append(shap_values)
                         del train_loader, test_loader
                         df_list.append(metrics_df)
                         print("Metrics:\n", metrics_df, sep='')
                         print("-"*50)
-                        shap_values = ttutils.plot_shap_values(final_model, dataset, category_map, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}_{fold+1}.png"))
-                        local_attack_shap_values.append(shap_values[list(category_map.values()).index("Attack")])
                     
-                    local_mean_shap_values = np.array(local_attack_shap_values).mean(axis=0)
-                    attack_shap_values.append(local_mean_shap_values)
+                    local_mean_shap_values = np.array(local_shap_values).mean(axis=0)
+                    total_shap_values.append(local_mean_shap_values)
 
                 print(f"[Run {i+1}] Multiclass confusion matrix:\n", multiclass_confusion_matrix, sep='')
                 ttutils.plot_confusion_matrix(multiclass_confusion_matrix, category_map, os.path.join(images_dir, f"confusion_matrix_{model_name}_{dataset_name}_{i+1}.png"))
@@ -430,8 +433,13 @@ if __name__ == "__main__":
                 local_test_results_df.to_csv(os.path.join(results_dir, f"local_test_results_{model_name}_{dataset_name}_{tl_type}.csv"))
                 results_df.to_csv(os.path.join(results_dir, f"results_{model_name}_{dataset_name}_{tl_type}.csv"))
             else:
-                mean_attack_shap_values = np.array(attack_shap_values).mean(axis=0)
-                feature_importance = zip(feature_names, mean_attack_shap_values)
-                feature_importance_series = pd.DataFrame(feature_importance, columns=["Feature", "SHAP_value"])
-                feature_importance_series.to_csv(os.path.join(results_dir, f"attack_shap_values_{model_name}_{dataset_name}.csv"), index_label='Index')
+                mean_attack_shap_values: np.ndarray = np.array(total_shap_values).mean(axis=0)
+                if use_binary_metrics:
+                    feature_importance = zip(feature_names, mean_attack_shap_values)
+                    feature_importance = pd.DataFrame(feature_importance, columns=["Feature", "SHAP_value"])
+                    feature_importance.to_csv(os.path.join(results_dir, f"attack_shap_values_{model_name}_{dataset_name}.csv"), index_label='Index')
+                else:
+                    feature_importance = pd.DataFrame(mean_attack_shap_values.T, columns=list(category_map.values()))
+                    feature_importance.insert(0, "Feature", feature_names)
+                    feature_importance.to_csv(os.path.join(results_dir, f"shap_values_{model_name}_{dataset_name}.csv"), index_label='Index')
                 results_df.to_csv(os.path.join(results_dir, f"results_{model_name}_{dataset_name}.csv"))

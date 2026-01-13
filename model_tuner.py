@@ -9,9 +9,8 @@ os.environ["RAY_USAGE_STATS_ENABLED"] = '0'
 import argparse
 import tempfile
 import json
-import sys
 import torch
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, TensorDataset
 from torcheval.metrics import MulticlassAccuracy
 import ray
 from ray import tune
@@ -22,11 +21,12 @@ import nevergrad as ng
 from utils import dataset_utils
 from utils.train_test_utils import train_model, get_device
 from utils.models import MyTransformerModel, MyLSTMClassifier, MyCNNModel, ModelTypes
+from utils.exceptions import InvalidArgumentException
 
 
 def prepare_tunable_training(dataset_id, epochs:int, n_features:int, n_classes: int, model_type: ModelTypes, device = torch.device("cuda")):
     def tunable_training(config: dict):
-        dataset = ray.get(dataset_id)
+        dataset: TensorDataset = ray.get(dataset_id)
         config_copy = config.copy()
         batch_size = config_copy.pop("batch_size")
         learning_rate = config_copy.pop("lr")
@@ -52,15 +52,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("run_mode", choices=("slurm", "local"), default="local", help="Run on SLURM or locally. Required for Ray")
     parser.add_argument("model", choices=[model.value for model in ModelTypes], help="Model type")
-    parser.add_argument("dataset_folder", type=str, help="Dataset directory containing CSV files")
     parser.add_argument("label_column", type=str, help="The name of the column to be used as class", default="Label")
-    parser.add_argument("-r", action="store_true", help="Remove network specific features", dest="remove_features")
+    parser.add_argument("-r", action="store_true", help="Remove network specific features according to model type", dest="remove_features")
+    parser.add_argument("-u", "--unified-removal", action="store_true", help="Reemove network specific features regardless of model type")
+    dataset_args = parser.add_mutually_exclusive_group(required=False)
+    dataset_args.add_argument("-f", "--file", type=str, help="Dataset CSV file", dest="dataset_file")
+    dataset_args.add_argument("-d", "--directory", type=str, help="Dataset directory containing CSV files", dest="dataset_folder")
     args = parser.parse_args()
     DEVICE = get_device()
+    use_directory = False
+    if args.dataset_folder is not None:
+        use_directory = True
     use_slurm = False
     run_mode = args.run_mode
     model_name = args.model
-    dataset_folder_path = args.dataset_folder
     label_column = args.label_column
 
     if run_mode.lower() == "slurm":
@@ -81,19 +86,23 @@ if __name__ == "__main__":
             tune_resources = {"cpu": 8, "gpu": 0.25}
 
     if args.remove_features:
-        #dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
-        #                    "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
-        if model_name == ModelTypes.TRANSFORMER:
-            dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
-        elif model_name == ModelTypes.LSTM:
-            dropped_columns = ["Timestamp", "Fwd Seg Size Min"]
+        if args.unified_removal:
+            dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
+                                "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
         else:
-            # for now
-            raise NotImplementedError("Feature removal for CNN is currently not supported!")
+            if model_name == ModelTypes.TRANSFORMER:
+                dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
+            elif model_name == ModelTypes.LSTM:
+                dropped_columns = ["Timestamp", "Fwd Seg Size Min"]
+            else:
+                # for now
+                raise NotImplementedError("Feature removal for CNN is currently not supported!")
         experiment_name = f"test_raytune_removed_features_{model_name}"
         best_config_file = "removed_features_best_config.json"
         
     else:
+        if args.unified_removal:
+            raise InvalidArgumentException("You must enable feature removal in order to use the unified feature removal variant!")
         dropped_columns = ["Timestamp"]
         experiment_name = f"test_raytune_{model_name}"
         best_config_file = "best_config.json"
@@ -106,10 +115,17 @@ if __name__ == "__main__":
     best_config_file_path = os.path.join(experiment_dir, best_config_file)
     rows_limit = int(400e+3)
     os.makedirs(raytune_dir, exist_ok=True)
-    loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_folder_path, label_column,
+    if use_directory:
+        loaded_dataset = dataset_utils.load_datasets_from_dir(args.dataset_folder, label_column,
                                                           drop_columns=dropped_columns, total_rows_limit=rows_limit, balance_classes=True)
-    dataset, num_rows, num_features, num_classes = loaded_dataset.dataset, loaded_dataset.num_rows, loaded_dataset.num_features, loaded_dataset.num_classes
-    del loaded_dataset
+        dataset, num_rows, num_features, num_classes = loaded_dataset.dataset, loaded_dataset.num_rows, loaded_dataset.num_features, loaded_dataset.num_classes
+        del loaded_dataset
+    else:
+        csv_dataset = dataset_utils.CSVDataset(args.dataset_file, label_column, columns_to_drop=dropped_columns, chunk_size=3e+6)
+        csv_dataset.load(balance_classes=True, rows_limit=rows_limit)
+        X, y, num_rows, num_features, num_classes = csv_dataset.X, csv_dataset.y, csv_dataset.n_rows, csv_dataset.n_features, csv_dataset.n_classes
+        dataset = TensorDataset(X, y)
+        del csv_dataset
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}")
     if use_slurm:
         slurm_cpus = int(os.getenv("SLURM_CPUS_PER_TASK", 1))

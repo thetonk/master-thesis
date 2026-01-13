@@ -140,8 +140,12 @@ def plot_confusion_matrix(confusion_matrix, category_map, plot_filename):
     fig, axes = plt.subplots(dpi=500)
     mat = axes.matshow(confusion_matrix, cmap=plt.cm.Blues)
     n_classes = confusion_matrix.shape[1]
+    if n_classes > 3:
+        rotation = 90
+    else:
+        rotation = 0
     axes.set_title("Confusion matrix")
-    axes.set_xticks(range(n_classes), labels=category_map.values())
+    axes.set_xticks(range(n_classes), labels=category_map.values(), rotation=rotation)
     axes.set_yticks(range(n_classes), labels=category_map.values())
     axes.set_ylabel("Actual")
     axes.set_xlabel("Predicted")

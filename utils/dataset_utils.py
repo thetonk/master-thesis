@@ -4,6 +4,7 @@
 # See the LICENSE file in the project root for full license text.
 
 import os
+import hashlib
 #import random
 import sys
 import argparse
@@ -43,6 +44,8 @@ class CSVDataset():
         self._columns_to_drop = columns_to_drop
         self.dataset_path = dataset_path
         self.categories = None
+        self.n_classes = None
+        self.n_rows = None
         self.X = None
         self.y = None
         df = pd.read_csv(dataset_path, nrows=0)
@@ -50,19 +53,25 @@ class CSVDataset():
         self._columns_to_drop = self._columns_to_drop + df.columns.difference(list(feature_columns)).to_list()
         df = df.drop(columns=self._columns_to_drop, errors="ignore")
         self.features = df.columns.to_list()
+        self.n_features = len(self.features)
 
     
     @staticmethod
     def _read_csv_in_chunks(file_path, columns_to_drop, chunk_size=1e+6):
         # convert all numeric data from float64 to float32, save memory, as model uses float32
-        with pd.read_csv(file_path, chunksize=chunk_size, low_memory=False, delimiter=",") as csv_reader:
+        cols = [col for col in FEATURE_COLUMNS if col not in columns_to_drop]
+        dtypes = {
+            c: "float32"
+            for c in cols
+        }
+        with pd.read_csv(file_path, chunksize=chunk_size, low_memory=False, dtype=dtypes, usecols=cols, delimiter=",") as csv_reader:
             for chunk in csv_reader:
+                chunk: pd.DataFrame
                 chunk.columns = chunk.columns.str.replace("_", " ")
-                chunk = chunk.drop(columns=columns_to_drop, errors="ignore")
-                chunk = _prepare_numeric_columns(chunk)
-                chunk = chunk.astype("float32")
+                #chunk = _prepare_numeric_columns(chunk)
                 print("Chunk shape:",chunk.shape, "Datatypes:", chunk.dtypes)
                 yield chunk
+        del dtypes, cols
 
     
     def load(self, balance_classes=True, rows_limit=500e+3):
@@ -70,12 +79,12 @@ class CSVDataset():
         label_column = self._label_column
         tensors = []
         for chunk in CSVDataset._read_csv_in_chunks(self.dataset_path, self._columns_to_drop, chunk_size=self._chunk_size):
-            tensors.append(torch.tensor(chunk.to_numpy()))
-        x_tensor = torch.cat(tensors, dim=0).float()
+            tensors.append(torch.from_numpy(chunk.to_numpy(dtype="float32")))
+        x_tensor = torch.cat(tensors, dim=0)
         y_df = pd.read_csv(self.dataset_path, delimiter=",", usecols=[label_column], dtype={label_column: "category"})
-        labels = y_df[label_column]
+        labels: pd.Series = y_df[label_column]
         del y_df
-        y_tensor = torch.tensor(labels.cat.codes.to_numpy(), dtype=torch.int64)
+        y_tensor = torch.from_numpy(labels.cat.codes.to_numpy(dtype="int64"))
         if balance_classes:
             num_classes = len(labels.cat.categories)
             minimum_class_samples = labels.cat.codes.value_counts().min()
@@ -104,6 +113,8 @@ class CSVDataset():
                 self.y = y_tensor
         del x_tensor, y_tensor
         self.categories = dict(enumerate(labels.cat.categories))
+        self.n_classes = len(self.categories)
+        self.n_rows = self.X.shape[0]
 
 
 class LoadedTensorDataset():
@@ -201,7 +212,7 @@ def prepare_few_shot_train_test(train_dataset: TensorDataset, test_dataset: Tens
     return train_dataset, test_dataset
 
 
-def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", chunk_size=1e+6, bin_benign_label=None):
+def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", chunk_size=1e+6, benign_label=None, multiclass=False):
     label_column = label_column.replace("_", " ")
     dataset_columns = list(FEATURE_COLUMNS) + [label_column]
     missing_fields = ["Src IP", "Src Port", "Dst IP"]
@@ -216,6 +227,7 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
             print("Merging file {} to {}...".format(csv_file_path, merged_csv_path))
             with pd.read_csv(csv_file_path, chunksize=chunk_size, low_memory=False, delimiter=",") as csv_reader:
                 for chunk in csv_reader:
+                    chunk: pd.DataFrame
                     chunk.columns = chunk.columns.str.replace("_", " ")
                     # Remove rows that are identical to the header
                     chunk = chunk[chunk.apply(lambda row: not all(str(row[col]) == col for col in chunk.columns), axis=1)]
@@ -226,9 +238,46 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
                     # drop all columns not in the final dataset list
                     chunk = chunk.drop(columns=chunk.columns.difference(dataset_columns))
 
-                    if bin_benign_label is not None:
-                        print("Replacing non benign traffic labels to 'Attack' label!")
-                        chunk.loc[chunk[label_column] != bin_benign_label, label_column] = "Attack"
+                    if benign_label is not None:
+                        if multiclass:
+                            # chunk[label_column] = chunk[label_column].str.replace(r".*scan.*|reconnaissance|analysis", "Scanner", regex=True, case=False)
+                            # chunk[label_column] = chunk[label_column].str.replace(r"mirai|okiru|.*c&c.*|torii|bot|botnet", "Botnet", regex=True, case=False)
+                            # chunk[label_column] = chunk[label_column].str.replace(r".*d?dos.*|flood", "DoS", regex=True, case=False)
+                            # chunk[label_column] = chunk[label_column].str.replace(r"heartbeat|exploits|sql injection|shellcode|fuzzers|infilteration", "Exploit", regex=True, case=False)
+                            # chunk[label_column] = chunk[label_column].str.replace(r".*brute ?force.*|sparta", "Brute force", regex=True, case=False)
+                            # chunk[label_column] = chunk[label_column].str.replace(r"attack|.*generic.*|theft", "Generic", regex=True, case=False)
+                            # chunk[label_column] = chunk[label_column].str.replace(r"worms?|.*download.*|backdoor", "Infection", regex=True, case=False)
+                            # chunk[label_column] = chunk[label_column].str.replace(r".*mitm.*", "MITM", regex=True, case=False)
+                            s = chunk[label_column].str.lower()
+                            conditions = [
+                                s.str.contains(r".*scan.*|reconnaissance|analysis", regex=True),
+                                s.str.contains(r"mirai|okiru|.*c&c.*|torii|bot|botnet", regex=True),
+                                s.str.contains(r".*d?dos.*|flood", regex=True),
+                                s.str.contains(r"heartbeat|exploits|sql injection|shellcode|fuzzers|infilteration", regex=True),
+                                s.str.contains(r".*brute ?force.*|sparta", regex=True),
+                                s.str.contains(r"attack|.*generic.*|theft", regex=True),
+                                s.str.contains(r"worms?|.*download.*|backdoor", regex=True),
+                                s.str.contains(r".*mitm.*", regex=True),
+                            ]
+                            del s
+                            choices = [
+                                "Scanner",
+                                "Botnet",
+                                "DoS",
+                                "Exploit",
+                                "Brute force",
+                                "Generic",
+                                "Infection",
+                                "MITM",
+                            ]
+                            chunk[label_column] = np.select(
+                                conditions,
+                                choices,
+                                default=chunk[label_column]
+                            )
+                        else:
+                            print("Replacing non benign traffic labels to 'Attack' label!")
+                            chunk.loc[chunk[label_column] != benign_label, label_column] = "Attack"
                     
                     chunk[label_column] = chunk[label_column].replace({"Benign": "Normal"})
                     # drop rows with dst port and protocol equal to 0
@@ -267,7 +316,7 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
                     numeric_chunk.replace([np.inf, -np.inf], np.nan, inplace=True)    
                     chunk_sums = numeric_chunk.sum(skipna=True)
                     chunk_counts = numeric_chunk.count()
-                    if sums is None:
+                    if sums is None or counts is None:
                         sums = chunk_sums
                         counts = chunk_counts
                     else:
@@ -302,7 +351,15 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
 
     os.remove(merged_csv_path)
     print("Removing duplicates, please wait...")
-    os.system(f"awk '!a[$0]++' '{tmp_merged_file}' > '{merged_csv_path}'")
+    # Memory efficient way to remove duplicates
+    with open(tmp_merged_file, "r") as f_in, open(merged_csv_path, "w") as f_out:
+        unique_hashes = set()
+        for line in f_in:
+            line_hash = hashlib.md5(line.encode()).digest()
+            if line_hash not in unique_hashes:
+                unique_hashes.add(line_hash)
+                f_out.write(line)
+        del unique_hashes
     os.remove(tmp_merged_file)
     print(f"CSV dataset merge completed successfully!")
 
@@ -313,11 +370,13 @@ if __name__ == "__main__":
     parser.add_argument("merged_dataset_path", type=str, help="Path to save the merged CSV dataset")
     parser.add_argument("label_column", type=str, help="The name of the column that will be used as class.", default="Label")
     parser.add_argument("benign_label", type=str, help="The label of benign samples", default="Normal")
+    parser.add_argument("-m", "--multiclass", action="store_true", help="Use multiclass labeling instead of binary")
     args = parser.parse_args()
     dataset_folder = args.dataset_folder
     merged_dataset_path = args.merged_dataset_path
     label_column = args.label_column
     benign_label = args.benign_label
-    merge_cicflow_csvs(dataset_folder, merged_dataset_path, label_column=label_column, chunk_size=2e+6,
-                       bin_benign_label=benign_label)
+    use_multiclass = args.multiclass
+    merge_cicflow_csvs(dataset_folder, merged_dataset_path, label_column, 2e+6,
+                       benign_label, use_multiclass)
 
