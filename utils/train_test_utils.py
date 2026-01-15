@@ -46,7 +46,7 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
                 learning_rate: float = 1e-3, device=torch.device("cuda"), train_tune=False, early_stopper: EarlyStopping | None =None):
     #torch.autograd.set_detect_anomaly(True)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    best_accuracy = 0
+    best_loss = float("inf")
     start_time = int(time.time())
     for epoch in range(epochs):
         metric.reset()
@@ -72,8 +72,8 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
         train_loss = total_loss/batch_number
         #train_accuracy = total_correct/samples
         train_accuracy = metric.compute().item()
-        if train_accuracy > best_accuracy:
-            best_accuracy = train_accuracy
+        if val_loader is None and train_loss < best_loss:
+            best_loss = train_loss
             save_model = True
         print("="*50)
         print(f"Epoch {epoch+1}/{epochs}. Average train accuracy: {train_accuracy*100:.3f}%, average loss: {train_loss:.5f}, current loss: {loss:.5f}.")
@@ -91,6 +91,9 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
                     metric.update(output, label)
                 val_loss = total_loss / batch_number
                 val_accuracy = metric.compute().item()
+                if val_loss < best_loss:
+                    best_loss = val_loss
+                    save_model = True
                 print(f"Validation accuracy: {val_accuracy*100:.3f}%, validation loss: {val_loss:.5f}")
                 if train_tune:
                     tune.report({"train_accuracy": train_accuracy, "val_accuracy": val_accuracy})
@@ -137,9 +140,9 @@ def test_model(model: nn.Module, test_loader: DataLoader, metrics: list[Metric],
 
 def plot_confusion_matrix(confusion_matrix, category_map, plot_filename):
     # Plot last confusion matrix
-    fig, axes = plt.subplots(dpi=500)
-    mat = axes.matshow(confusion_matrix, cmap=plt.cm.Blues)
     n_classes = confusion_matrix.shape[1]
+    fig, axes = plt.subplots(figsize=(n_classes*1.1, n_classes*1.1), dpi=500)
+    mat = axes.matshow(confusion_matrix, cmap=plt.cm.Blues)
     if n_classes > 3:
         rotation = 90
     else:

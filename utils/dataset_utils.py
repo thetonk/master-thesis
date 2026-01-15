@@ -77,10 +77,23 @@ class CSVDataset():
     def load(self, balance_classes=True, rows_limit=500e+3):
         rows_limit = int(rows_limit)
         label_column = self._label_column
-        tensors = []
+        self.n_rows = 0
+        # preallocate x tensor to save memory
+        with open(self.dataset_path, "r") as f:
+            for _ in f:
+                self.n_rows += 1
+        # remove header line
+        self.n_rows -= 1
+        x_tensor = torch.empty(size=(self.n_rows, self.n_features), dtype=torch.float32)
+        #tensors = []
+        offset = 0
         for chunk in CSVDataset._read_csv_in_chunks(self.dataset_path, self._columns_to_drop, chunk_size=self._chunk_size):
-            tensors.append(torch.from_numpy(chunk.to_numpy(dtype="float32")))
-        x_tensor = torch.cat(tensors, dim=0)
+            n = len(chunk)
+            x_tensor[offset:offset+n] = torch.from_numpy(chunk.to_numpy(dtype="float32"))
+            offset += n
+            #tensors.append(torch.from_numpy(chunk.to_numpy(dtype="float32")))
+        assert offset == x_tensor.shape[0]
+        #x_tensor = torch.cat(tensors, dim=0)
         y_df = pd.read_csv(self.dataset_path, delimiter=",", usecols=[label_column], dtype={label_column: "category"})
         labels: pd.Series = y_df[label_column]
         del y_df
@@ -114,7 +127,6 @@ class CSVDataset():
         del x_tensor, y_tensor
         self.categories = dict(enumerate(labels.cat.categories))
         self.n_classes = len(self.categories)
-        self.n_rows = self.X.shape[0]
 
 
 class LoadedTensorDataset():

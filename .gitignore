@@ -10,6 +10,7 @@ results/raytune/**
 !results/raytune/**/best_configv2.json
 !results/raytune/**/removed_features_best_config.json
 !results/raytune/**/*improved_removed_features_best_config.json
+!results/raytune/**/*multiclass.json
 results/**/new_config/
 .idea/
 *.pt

@@ -135,7 +135,7 @@ if __name__ == "__main__":
         ray.init(include_dashboard=False)
     print("Ray will use the following resources:", ray.available_resources())
     if model_name == ModelTypes.TRANSFORMER:
-        search_space = {"lr": tune.choice([1e-4, 1e-3, 1e-2]),
+        search_space = {"lr": tune.loguniform(1e-4, 5e-3),
                         "batch_size": tune.choice( [32, 64, 128, 256]),
                         "enc_embedding_dim": tune.choice([32, 64, 128, 256]),
                         "enc_num_heads": tune.choice([4,8,16,32]),
@@ -143,8 +143,8 @@ if __name__ == "__main__":
                         "enc_ff_dropout": tune.choice([0, 0.1, 0.2, 0.3]),
                         "enc_attn_dropout": tune.choice([0, 0.1, 0.2]),
                         "mlp_hidden_neurons": tune.choice([128, 256, 512, 1024]),
-                        "num_encoders": tune.choice([1,2]),
-                        "num_mlps": tune.choice([1,2,3,4]),
+                        "num_encoders": tune.choice([1,2,3]),
+                        "num_mlps": tune.choice([1,2,3,4,5]),
                         "mlp_dropout": tune.choice([0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4])
                         }
         initial_config = [{
@@ -152,10 +152,10 @@ if __name__ == "__main__":
             'enc_embedding_dim': 128, 'enc_num_heads': 8, 'enc_ff_neurons': 256, 'enc_ff_dropout': 0, 'enc_attn_dropout': 0,
             'mlp_hidden_neurons': 256, 'num_encoders': 1, 'num_mlps': 1, 'mlp_dropout': 0.1
         }]
-        epochs = 20
+        epochs = 30
         num_samples = 500
     elif model_name == ModelTypes.LSTM:
-        search_space = {"lr": tune.choice([1e-4, 1e-3, 1e-2]),
+        search_space = {"lr": tune.loguniform(1e-4, 5e-3),
                         "batch_size": tune.choice([32, 64, 128, 256]),
                         "hidden_lstm_states": tune.choice([128, 256, 512]),
                         "hidden_mlp_neurons": tune.choice([128, 256, 512, 1024]),
@@ -177,7 +177,7 @@ if __name__ == "__main__":
         initial_config = [{"lr": 1e-3, "batch_size": 128, "hidden_mlp_neurons": 64, "mlp_dropout": 0.1, "conv_layers": 6, 
                            "kernel_size": 5, "padding": 1}]
         num_samples = 1000
-        epochs = 35
+        epochs = 40
 
     #hyperband = HyperBandScheduler(time_attr="training_iteration", max_t=epochs, reduction_factor=2)
     asha = ASHAScheduler(time_attr="training_iteration", max_t=epochs, reduction_factor=2)

@@ -28,4 +28,5 @@ dependencies = [
     "torcheval>=0.0.7",
     "torchinfo>=1.8.0",
     "torchvision>=0.23.0",
+    "umap-learn>=0.5.11",
 ]
