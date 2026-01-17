@@ -9,7 +9,7 @@
         "lr": 0.000707106781186548,
         "mlp_dropout": 0.1,
         "mlp_hidden_neurons": 1024,
-        "num_encoders": 1,
+        "num_encoders": 2,
         "num_mlps": 1
     },
     "metrics": {
