@@ -63,24 +63,28 @@ class MyTransformerModel(nn.Module):
                  enc_ff_dropout:float = 0, enc_attn_dropout:float = 0,
                  mlp_hidden_neurons:int = 512, mlp_dropout:float = 0.1):
         super().__init__()
-        layer_list = []
+        transformer_list = []
+        mlp_list = []
         for i in range(num_encoders):
             if i == 0:
-                layer_list.append(EncoderTransformer(num_features, enc_embedding_dim, num_heads=enc_num_heads, ff_neurons=enc_ff_neurons,
+                transformer_list.append(EncoderTransformer(num_features, enc_embedding_dim, num_heads=enc_num_heads, ff_neurons=enc_ff_neurons,
                                                      ff_dropout=enc_ff_dropout, attn_dropout=enc_attn_dropout))
             else:
-                layer_list.append(EncoderTransformer(enc_embedding_dim, enc_embedding_dim, num_heads=enc_num_heads, ff_neurons=enc_ff_neurons,
+                transformer_list.append(EncoderTransformer(enc_embedding_dim, enc_embedding_dim, num_heads=enc_num_heads, ff_neurons=enc_ff_neurons,
                                                      ff_dropout=enc_ff_dropout, attn_dropout=enc_ff_dropout))
         for i in range(num_mlps):
             if i == num_mlps - 1:
-                layer_list.append(MLPClassifier(enc_embedding_dim, num_classes, hidden_neurons=mlp_hidden_neurons, dropout=mlp_dropout))
+                mlp_list.append(MLPClassifier(enc_embedding_dim, num_classes, hidden_neurons=mlp_hidden_neurons, dropout=mlp_dropout))
             else:
-                layer_list.append(MLPClassifier(enc_embedding_dim, enc_embedding_dim, hidden_neurons=mlp_hidden_neurons, dropout=mlp_dropout))
-        self.layers = nn.Sequential(*layer_list)
+                mlp_list.append(MLPClassifier(enc_embedding_dim, enc_embedding_dim, hidden_neurons=mlp_hidden_neurons, dropout=mlp_dropout))
+        self.transformer_layers = nn.Sequential(*transformer_list)
+        self.mlp_layers = nn.Sequential(*mlp_list)
 
 
     def forward(self, x: torch.tensor):
-        return self.layers(x)
+        x = self.transformer_layers(x)
+        x = self.mlp_layers(x)
+        return x
 
 
 class MyLSTMClassifier(nn.Module):
@@ -98,8 +102,8 @@ class MyLSTMClassifier(nn.Module):
             nn.Linear(hidden_mlp_neurons, n_classes),
         )
 
-
-    def forward(self, x: torch.Tensor):
+    
+    def lstm_layers(self, x: torch.Tensor):
         x = x.unsqueeze(-1)
         # initialize lstm states with noise, preferred from zero initialization
         h0 = torch.randn(1, x.shape[0], self.hidden_lstm_states, device=self.device)
@@ -114,6 +118,11 @@ class MyLSTMClassifier(nn.Module):
         output, _ = self.inner_lstm(output, (h0, c0))
         # keep only the output of last time step
         output = output[:, -1, :]
+        return output
+
+
+    def forward(self, x: torch.Tensor):
+        output = self.lstm_layers(x)
         output = self.dropout_layer(output)
         output = self.mlp_classifier(output)
         return output
