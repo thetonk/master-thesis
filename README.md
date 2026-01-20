@@ -32,6 +32,9 @@ The following table matches the script files with their designed experiment usag
 Each script is flexible and has multiple options available. To view the available options of each script, you may consult their available help texts. You may read them by running `uv run <scriptfile> --help`, or `python3 <scriptfile> --help`.
 Please note that for the model hyperparameter tuning, search space is limited. The possible values of the hyperparameters of each model are available on the following tables.
 
+> [!WARNING]
+> To run the tuning script ([model_tuner.py](./model_tuner.py)), do not use uv, because there are compatibility issues running Ray Tune with uv by the time writing this. Instead, activate the python virtual environment manually according to the instructions (see the pip installation method) and run it using `python3 model_tuner.py <your-options>`.
+
 ### Transformer-based model
 | Hyperparameter name  | Values                               |
 |----------------------|--------------------------------------|
