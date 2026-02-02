@@ -47,8 +47,10 @@ fi
 
 if [[ "$model" == "transformer" ]]; then
     epochs=30
-else
+elif [[ "$model" == "lstm" ]]; then
     epochs=5
+else
+    epochs=35
 fi
 
 if [[ "$run_mode" == "zero_shot" ]]; then

@@ -18,7 +18,7 @@ from sklearn.model_selection import StratifiedKFold, LeaveOneOut
 import matplotlib
 from utils import dataset_utils
 from utils import train_test_utils as ttutils
-from utils.models import MyTransformerModel, MyLSTMClassifier, MyCNNModel, ModelTypes
+from utils.models import ModelTypes, get_model
 from utils.exceptions import handle_slurm_exception, InvalidArgumentException
 
 #SEED = 42
@@ -158,7 +158,7 @@ if __name__ == "__main__":
         num_rows = csv_dataset.n_rows
         datatype = X.dtype
     else:
-        rows_per_dataset = 77140 if use_binary_metrics else 150903
+        rows_per_dataset = 77140 if use_binary_metrics else 150903 # 150903 samples are required for the case of multiclass
         rows_per_dataset = rows_per_dataset * dataset_percentage / 100
         if zero_shot or few_shot:
             print(f"Running in {'zero-shot' if zero_shot else 'few-shot'} mode!")
@@ -253,12 +253,7 @@ if __name__ == "__main__":
                         val_loader = DataLoader(val_dataset, batch_size, pin_memory=True, num_workers=N_WORKERS)
                     test_metrics = ttutils.prepare_test_metrics(num_classes, DEVICE, use_binary_metrics)
                     local_test_metrics = ttutils.prepare_test_metrics(num_classes, DEVICE, use_binary_metrics)
-                    if model_name == ModelTypes.TRANSFORMER:
-                        model = MyTransformerModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
-                    elif model_name == ModelTypes.LSTM:
-                        model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
-                    else:
-                        model = MyCNNModel(num_classes, **model_hyperparameters).to(DEVICE)
+                    model = get_model(model_name, model_hyperparameters, num_features, num_classes).to(DEVICE)
                     if show_summary:
                         torchinfo.summary(model, input_size=(batch_size, num_features))
                         show_summary = False
@@ -266,12 +261,7 @@ if __name__ == "__main__":
                     ttutils.train_model(model, model_filename, train_loader, val_loader, training_metric, epochs=epochs, device=DEVICE,
                                 learning_rate=learning_rate, early_stopper=early_stopper)
                     print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
-                    if model_name == ModelTypes.TRANSFORMER:
-                        final_model = MyTransformerModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
-                    elif model_name == ModelTypes.LSTM:
-                        final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
-                    else:
-                        final_model = MyCNNModel(num_classes, **model_hyperparameters).to(DEVICE)
+                    final_model = get_model(model_name, model_hyperparameters, num_features, num_classes).to(DEVICE)
                     final_model.load_state_dict(torch.load(model_filename, weights_only=True))
                     multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = ttutils.test_model(
                         final_model, test_loader, test_metrics, device=DEVICE)
@@ -308,12 +298,7 @@ if __name__ == "__main__":
                 if folds == 0:
                     print("Training and testing model with a random split of 80% train and 20% test!")
                     metrics = ttutils.prepare_test_metrics(num_classes, DEVICE, use_binary_metrics)
-                    if model_name == ModelTypes.TRANSFORMER:
-                        model = MyTransformerModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
-                    elif model_name == ModelTypes.LSTM:
-                        model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
-                    else:
-                        model = MyCNNModel(num_classes, **model_hyperparameters).to(DEVICE)
+                    model = get_model(model_name, model_hyperparameters, num_features, num_classes).to(DEVICE)
                     torchinfo.summary(model, input_size=(batch_size, num_features))
                     print(sum(p.numel() for p in model.parameters() if p.requires_grad))
                     val_loader = None
@@ -332,12 +317,7 @@ if __name__ == "__main__":
                     ttutils.train_model(model, model_filename, train_loader, val_loader, training_metric, epochs=epochs,
                                 device=DEVICE, learning_rate=learning_rate, early_stopper=early_stopper)
                     print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
-                    if model_name == ModelTypes.TRANSFORMER:
-                        final_model = MyTransformerModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
-                    elif model_name == ModelTypes.LSTM:
-                        final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
-                    else:
-                        final_model = MyCNNModel(num_classes, 5, 1, 128).to(DEVICE)
+                    final_model = get_model(model_name, model_hyperparameters, num_features, num_classes).to(DEVICE)
                     final_model.load_state_dict(torch.load(model_filename, weights_only=True))
                     multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, multiclass_confusion_matrix = ttutils.test_model(final_model, test_loader, metrics, device=DEVICE)
                     shap_values = ttutils.plot_shap_values(final_model, dataset, category_map, num_classes, feature_names, os.path.join(images_dir, f"shap_values_{model_name}_{dataset_name}_{i+1}.png"))   
@@ -364,12 +344,7 @@ if __name__ == "__main__":
                     local_shap_values = []
                     for fold, (train_index, test_index) in enumerate(strat_kfold.split(X, y)):
                         metrics = ttutils.prepare_test_metrics(num_classes, DEVICE, use_binary_metrics)
-                        if model_name == ModelTypes.TRANSFORMER:
-                            model = MyTransformerModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
-                        elif model_name == ModelTypes.LSTM:
-                            model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
-                        else:
-                            model = MyCNNModel(num_classes, **model_hyperparameters).to(DEVICE)
+                        model = get_model(model_name, model_hyperparameters, num_features, num_classes).to(DEVICE)
                         if show_summary:
                             torchinfo.summary(model, input_size=(batch_size, num_features))
                             show_summary = False
@@ -391,12 +366,7 @@ if __name__ == "__main__":
                         ttutils.train_model(model, model_filename, train_loader, val_loader, metric=training_metric, epochs=epochs,
                                     device=DEVICE, learning_rate=learning_rate, early_stopper=early_stopper)
                         print("TRAINING COMPLETE. STARTING TESTING SESSION!!!")
-                        if model_name == ModelTypes.TRANSFORMER:
-                            final_model = MyTransformerModel(num_features, num_classes, **model_hyperparameters).to(DEVICE)
-                        elif model_name == ModelTypes.LSTM:
-                            final_model = MyLSTMClassifier(num_classes, **model_hyperparameters).to(DEVICE)
-                        else:
-                            final_model = MyCNNModel(num_classes, **model_hyperparameters).to(DEVICE)
+                        final_model = get_model(model_name, model_hyperparameters, num_features, num_classes).to(DEVICE)
                         final_model.load_state_dict(torch.load(model_filename, weights_only=True))
                         multiclass_accuracy, multiclass_precision, multiclass_recall, multiclass_f1_score, fold_confusion_matrix = ttutils.test_model(final_model, test_loader, metrics, device=DEVICE)
                         multiclass_confusion_matrix += fold_confusion_matrix.astype(np.uint64)

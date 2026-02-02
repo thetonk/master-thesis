@@ -141,7 +141,8 @@ def test_model(model: nn.Module, test_loader: DataLoader, metrics: list[Metric],
 def plot_confusion_matrix(confusion_matrix, category_map, plot_filename):
     # Plot last confusion matrix
     n_classes = confusion_matrix.shape[1]
-    fig, axes = plt.subplots(figsize=(n_classes*1.1, n_classes*1.1), dpi=500)
+    size = max(6.4, n_classes*1.1)
+    fig, axes = plt.subplots(figsize=(size, size), dpi=500)
     mat = axes.matshow(confusion_matrix, cmap=plt.cm.Blues)
     if n_classes > 3:
         rotation = 90

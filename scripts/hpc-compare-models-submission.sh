@@ -21,25 +21,29 @@ source .venv/bin/activate
 
 if [[ $# -lt 9 ]]; then
   echo "Invalid number of arguments! You must enter at least 8 arguments!"
-  echo "Usage: $0 <run_mode> <dataset_directory> <transformer_config> <transformer_epochs> <lstm_config> <lstm_epochs> <label_column> <num_runs> <num_folds>"
+  echo "Usage: $0 <run_mode> <dataset_directory> <model1_config> <model1_epochs> <model2_config> <model2_epochs> <model1_type> <model2_type> <label_column> <num_runs> <num_folds>"
   echo "Run mode can be either 'sequential' or 'parallel'"
 fi
 
 run_mode="$1"
 dataset_dir="$2"
-transformer_config="$3"
-transformer_epochs="$4"
-lstm_config="$5"
-lstm_epochs="$6"
-label_column="$7"
-num_runs="$8"
-num_folds="$9"
-shift 9
+model1_config="$3"
+model1_epochs="$4"
+model2_config="$5"
+model2_epochs="$6"
+model1_type="$7"
+model2_type="$8"
+label_column="$9"
+num_runs="${10}"
+num_folds="${11}"
+shift 11
 
 shopt -s nocasematch
 
 if [[ "$run_mode" == "parallel" ]]; then
-  srun python3 -u models_comparator.py -r -e -p -d "$dataset_dir" -tc "$transformer_config" -te "$transformer_epochs" -lc "$lstm_config" -le "$lstm_epochs" "$@" "$label_column" "$num_runs" "$num_folds"
+  srun python3 -u models_comparator.py -r -e -p -d "$dataset_dir" -fc "$model1_config" -fe "$model1_epochs" -sc "$model2_config" -se "$model2_epochs" "$@" \
+    "$model1_type" "$model2_type" "$label_column" "$num_runs" "$num_folds"
 else
-  srun python3 -u models_comparator.py -r -e -d "$dataset_dir" -tc "$transformer_config" -te "$transformer_epochs" -lc "$lstm_config" -le "$lstm_epochs" "$@" "$label_column" "$num_runs" "$num_folds"
+  srun python3 -u models_comparator.py -r -e -d "$dataset_dir" -fc "$model1_config" -fe "$model1_epochs" -sc "$model2_config" -se "$model2_epochs" "$@" \
+    "$model1_type" "$model2_type" "$label_column" "$num_runs" "$num_folds"
 fi

@@ -13,6 +13,16 @@ class ModelTypes(enum.StrEnum):
     LSTM = enum.auto()
 
 
+def get_model(model_type: ModelTypes, model_hyperparameters, num_features, num_classes) -> torch.nn.Module:
+    if model_type == ModelTypes.TRANSFORMER:
+        model = MyTransformerModel(num_features, num_classes, **model_hyperparameters)
+    elif model_type == ModelTypes.LSTM:
+        model = MyLSTMClassifier(num_classes, **model_hyperparameters)
+    else:
+        model = MyCNNModel(num_classes, **model_hyperparameters)
+    return model
+ 
+
 class EncoderTransformer(nn.Module):
     def __init__(self, feature_dim: int, embedding_dim:int = 128, num_heads:int = 8, 
                  attn_dropout:float = 0.0, ff_dropout:float = 0.0, epsilon=1e-6, ff_neurons=256):
@@ -142,11 +152,11 @@ class MyCNNModel(nn.Module):
         self.global_avg_pool = nn.AdaptiveAvgPool1d(1)
         self.mlp_classifier = nn.Sequential(
             nn.LazyLinear(hidden_mlp_neurons),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(mlp_dropout),
-            #nn.Linear(mlp_hidden_neurons, mlp_hidden_neurons),
-            #nn.ReLU(),
-            #nn.Dropout(mlp_dropout),
+            nn.Linear(hidden_mlp_neurons, hidden_mlp_neurons),
+            nn.GELU(),
+            nn.Dropout(mlp_dropout),
             nn.Linear(hidden_mlp_neurons, n_classes)
         )
         self.flatten = nn.Flatten()

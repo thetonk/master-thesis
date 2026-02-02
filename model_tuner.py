@@ -20,7 +20,7 @@ from ray.tune.search.nevergrad import NevergradSearch
 import nevergrad as ng
 from utils import dataset_utils
 from utils.train_test_utils import train_model, get_device
-from utils.models import MyTransformerModel, MyLSTMClassifier, MyCNNModel, ModelTypes
+from utils.models import ModelTypes, get_model
 from utils.exceptions import InvalidArgumentException
 
 
@@ -35,12 +35,7 @@ def prepare_tunable_training(dataset_id, epochs:int, n_features:int, n_classes: 
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
         validation_loader = DataLoader(validation_dataset, batch_size=batch_size, num_workers=8, pin_memory=True, persistent_workers=True)
         metric = MulticlassAccuracy(average='macro', num_classes=n_classes, device=device)
-        if model_type == ModelTypes.TRANSFORMER:
-            model = MyTransformerModel(n_features, n_classes, **config_copy).to(device)
-        elif model_type == ModelTypes.LSTM:
-            model = MyLSTMClassifier(n_classes, **config_copy).to(device)
-        else:
-            model = MyCNNModel(n_classes, **config_copy).to(device)
+        model = get_model(model_type, config_copy, n_features, n_classes).to(device)
         with tempfile.NamedTemporaryFile(suffix=".pt") as tmpfile:
             tmpfilename = tmpfile.name
             train_model(model, tmpfilename, train_loader, validation_loader, metric=metric, epochs=epochs,
