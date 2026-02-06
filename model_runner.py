@@ -19,6 +19,7 @@ import matplotlib
 from utils import dataset_utils
 from utils import train_test_utils as ttutils
 from utils.models import ModelTypes, get_model
+from utils.dataset_utils import get_dropped_columns
 from utils.exceptions import handle_slurm_exception, InvalidArgumentException
 
 #SEED = 42
@@ -112,16 +113,7 @@ if __name__ == "__main__":
         if folds < 0 or epochs < 1 or num_runs < 1:
             raise ValueError("Please specify valid number of folds and epochs")
         if args.remove_features:
-            if args.unified_removal:
-                dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
-                                    "Idle Mean", "Idle Min", "Idle Max"]
-            else:
-                if model_name == ModelTypes.TRANSFORMER:
-                    dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
-                elif model_name == ModelTypes.LSTM:
-                    dropped_columns = ["Timestamp", "Fwd Seg Size Min"]
-                else:
-                    raise NotImplementedError("Feature removal for CNN is currently not supported!")
+            dropped_columns = get_dropped_columns(model_name, args.unified_removal)
         else:
             if args.unified_removal:
                 raise InvalidArgumentException("You must enable feature removal in order to use the unified feature removal variant!")

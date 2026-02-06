@@ -1,0 +1,38 @@
+{
+    "config": {
+        "batch_size": 64,
+        "conv_layers": 7,
+        "hidden_mlp_neurons": 64,
+        "kernel_size": 6,
+        "lr": 0.00158113883008419,
+        "mlp_dropout": 0.0,
+        "padding": 2
+    },
+    "metrics": {
+        "checkpoint_dir_name": null,
+        "config": {
+            "batch_size": 64,
+            "conv_layers": 7,
+            "hidden_mlp_neurons": 64,
+            "kernel_size": 6,
+            "lr": 0.00158113883008419,
+            "mlp_dropout": 0.0,
+            "padding": 2
+        },
+        "date": "2026-02-06_02-00-55",
+        "done": true,
+        "experiment_tag": "806_batch_size=64,conv_layers=7,hidden_mlp_neurons=64,kernel_size=6,lr=0.0016,mlp_dropout=0.0000,padding=2",
+        "hostname": "terranator",
+        "iterations_since_restore": 40,
+        "node_ip": "192.168.10.172",
+        "pid": 270156,
+        "time_since_restore": 205.11758399009705,
+        "time_this_iter_s": 5.107191801071167,
+        "time_total_s": 205.11758399009705,
+        "timestamp": 1770336055,
+        "train_accuracy": 0.7660859227180481,
+        "training_iteration": 40,
+        "trial_id": "151d6414",
+        "val_accuracy": 0.7805910110473633
+    }
+}

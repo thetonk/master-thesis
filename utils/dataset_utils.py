@@ -14,6 +14,7 @@ from torch.utils.data import TensorDataset
 from sklearn.model_selection import StratifiedShuffleSplit
 import pandas as pd
 import numpy as np
+from utils.models import ModelTypes
 
 #np.random.seed(42)
 
@@ -27,6 +28,20 @@ FEATURE_COLUMNS = (
     "Bwd Byts/b Avg","Bwd Pkts/b Avg","Bwd Blk Rate Avg","Subflow Fwd Pkts","Subflow Fwd Byts","Subflow Bwd Pkts","Subflow Bwd Byts","Init Fwd Win Byts","Init Bwd Win Byts",
     "Fwd Act Data Pkts","Fwd Seg Size Min","Active Mean","Active Std","Active Max","Active Min","Idle Mean","Idle Std","Idle Max","Idle Min"
 )
+
+def get_dropped_columns(model_type: ModelTypes, unified_removal=False) -> list[str]:
+    dropped_columns = ["Timestamp"]
+    if not unified_removal:
+        if model_type == ModelTypes.TRANSFORMER:
+            dropped_columns += ["Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
+        elif model_type == ModelTypes.LSTM:
+            dropped_columns += ["Fwd Seg Size Min"]
+        else:
+            dropped_columns += ["Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max", "Idle Std"]
+    else:
+        dropped_columns += ["Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
+                                    "Idle Mean", "Idle Min", "Idle Max"]
+    return dropped_columns
 
 def _prepare_numeric_columns(df: pd.DataFrame, label_column = "Label") -> pd.DataFrame:
     non_numeric_columns = ["Src IP", "Dst IP", "Timestamp", label_column]
@@ -252,14 +267,6 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
 
                     if benign_label is not None:
                         if multiclass:
-                            # chunk[label_column] = chunk[label_column].str.replace(r".*scan.*|reconnaissance|analysis", "Scanner", regex=True, case=False)
-                            # chunk[label_column] = chunk[label_column].str.replace(r"mirai|okiru|.*c&c.*|torii|bot|botnet", "Botnet", regex=True, case=False)
-                            # chunk[label_column] = chunk[label_column].str.replace(r".*d?dos.*|flood", "DoS", regex=True, case=False)
-                            # chunk[label_column] = chunk[label_column].str.replace(r"heartbeat|exploits|sql injection|shellcode|fuzzers|infilteration", "Exploit", regex=True, case=False)
-                            # chunk[label_column] = chunk[label_column].str.replace(r".*brute ?force.*|sparta", "Brute force", regex=True, case=False)
-                            # chunk[label_column] = chunk[label_column].str.replace(r"attack|.*generic.*|theft", "Generic", regex=True, case=False)
-                            # chunk[label_column] = chunk[label_column].str.replace(r"worms?|.*download.*|backdoor", "Infection", regex=True, case=False)
-                            # chunk[label_column] = chunk[label_column].str.replace(r".*mitm.*", "MITM", regex=True, case=False)
                             s = chunk[label_column].str.lower()
                             conditions = [
                                 s.str.contains(r".*scan.*|reconnaissance|analysis", regex=True),

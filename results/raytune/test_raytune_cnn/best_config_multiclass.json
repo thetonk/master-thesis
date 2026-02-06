@@ -1,0 +1,38 @@
+{
+    "config": {
+        "batch_size": 256,
+        "conv_layers": 6,
+        "hidden_mlp_neurons": 512,
+        "kernel_size": 7,
+        "lr": 0.0010000000000000007,
+        "mlp_dropout": 0.15,
+        "padding": 1
+    },
+    "metrics": {
+        "checkpoint_dir_name": null,
+        "config": {
+            "batch_size": 256,
+            "conv_layers": 6,
+            "hidden_mlp_neurons": 512,
+            "kernel_size": 7,
+            "lr": 0.0010000000000000007,
+            "mlp_dropout": 0.15,
+            "padding": 1
+        },
+        "date": "2026-02-06_07-15-43",
+        "done": true,
+        "experiment_tag": "351_batch_size=256,conv_layers=6,hidden_mlp_neurons=512,kernel_size=7,lr=0.0010,mlp_dropout=0.1500,padding=1",
+        "hostname": "cn50.it.auth.gr",
+        "iterations_since_restore": 40,
+        "node_ip": "155.207.96.50",
+        "pid": 95488,
+        "time_since_restore": 126.79008865356445,
+        "time_this_iter_s": 2.9754533767700195,
+        "time_total_s": 126.79008865356445,
+        "timestamp": 1770354943,
+        "train_accuracy": 0.644028902053833,
+        "training_iteration": 40,
+        "trial_id": "9d77d23d",
+        "val_accuracy": 0.6397626996040344
+    }
+}

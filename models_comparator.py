@@ -19,6 +19,7 @@ from torcheval.metrics import BinaryAccuracy, MulticlassAccuracy
 from sklearn.model_selection import StratifiedKFold
 from utils import dataset_utils
 from utils import train_test_utils as ttutils
+from utils.dataset_utils import get_dropped_columns
 from utils.models import ModelTypes, get_model
 from utils.exceptions import handle_slurm_exception
 
@@ -49,16 +50,6 @@ def train_test_model(pipe, model, model_config, train_dataset,
     else:
         pipe.send(test_results)
         pipe.close()
-
-
-def get_dropped_columns(model_type: ModelTypes):
-    if model_type == ModelTypes.TRANSFORMER:
-        dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
-    elif model_type == ModelTypes.LSTM:
-        dropped_columns = ["Timestamp", "Fwd Seg Size Min"]
-    else:
-        raise NotImplementedError("Feature removal for CNN is currently not supported!")
-    return dropped_columns
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import enum
 
+
 class ModelTypes(enum.StrEnum):
     CNN = enum.auto()
     TRANSFORMER = enum.auto()

@@ -22,6 +22,7 @@ from utils import dataset_utils
 from utils.train_test_utils import train_model, get_device
 from utils.models import ModelTypes, get_model
 from utils.exceptions import InvalidArgumentException
+from utils.dataset_utils import get_dropped_columns
 
 
 def prepare_tunable_training(dataset_id, epochs:int, n_features:int, n_classes: int, model_type: ModelTypes, device = torch.device("cuda")):
@@ -81,17 +82,7 @@ if __name__ == "__main__":
             tune_resources = {"cpu": 8, "gpu": 0.25}
 
     if args.remove_features:
-        if args.unified_removal:
-            dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Fwd Seg Size Min", "Init Bwd Win Byts",
-                                "Init Fwd Win Byts", "Dst Port", "Idle Min", "Idle Max"]
-        else:
-            if model_name == ModelTypes.TRANSFORMER:
-                dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
-            elif model_name == ModelTypes.LSTM:
-                dropped_columns = ["Timestamp", "Fwd Seg Size Min"]
-            else:
-                # for now
-                raise NotImplementedError("Feature removal for CNN is currently not supported!")
+        dropped_columns = get_dropped_columns(model_name, args.unified_removal)
         experiment_name = f"test_raytune_removed_features_{model_name}"
         best_config_file = "removed_features_best_config.json"
         
@@ -138,8 +129,8 @@ if __name__ == "__main__":
                         "enc_ff_dropout": tune.choice([0, 0.1, 0.2, 0.3]),
                         "enc_attn_dropout": tune.choice([0, 0.1, 0.2]),
                         "mlp_hidden_neurons": tune.choice([128, 256, 512, 1024]),
-                        "num_encoders": tune.choice([1,2,3]),
-                        "num_mlps": tune.choice([1,2,3,4,5]),
+                        "num_encoders": tune.randint(1,4),
+                        "num_mlps": tune.randint(1,6),
                         "mlp_dropout": tune.choice([0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4])
                         }
         initial_config = [{
@@ -165,7 +156,7 @@ if __name__ == "__main__":
                         "batch_size": tune.choice([32, 64, 128, 256]),
                         "hidden_mlp_neurons": tune.choice([64, 128, 256, 512, 1024]),
                         "mlp_dropout": tune.choice([0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]),
-                        "conv_layers": tune.randint(4, 16),
+                        "conv_layers": tune.randint(4, 11),
                         "kernel_size": tune.randint(3, 11),
                         "padding": tune.randint(0, 4)
                     }
