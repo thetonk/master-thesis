@@ -4,13 +4,13 @@
 # See the LICENSE file in the project root for full license text.
 
 import time
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torcheval.metrics import Metric
 from torcheval.metrics import MulticlassAccuracy, MulticlassF1Score, MulticlassConfusionMatrix, MulticlassPrecision, MulticlassRecall
 from torcheval.metrics import BinaryAccuracy, BinaryF1Score, BinaryConfusionMatrix, BinaryPrecision, BinaryRecall
-import numpy as np
 import matplotlib.pyplot as plt
 from ray import tune
 import shap

@@ -1,0 +1,5 @@
+,Metric,T-test p-value,Wilcoxon p-value
+0,Accuracy,6.1154244e-22,4.2810176e-15
+1,Precision,8.073588e-20,1.0292192e-13
+2,Recall,5.7864746e-08,3.9100502e-07
+3,F1 Score,6.2857796e-16,3.961742e-12

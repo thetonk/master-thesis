@@ -9,11 +9,11 @@ import hashlib
 import sys
 import argparse
 import ipaddress
+import numpy as np
 import torch
 from torch.utils.data import TensorDataset
 from sklearn.model_selection import StratifiedShuffleSplit
 import pandas as pd
-import numpy as np
 from utils.models import ModelTypes
 
 #np.random.seed(42)
