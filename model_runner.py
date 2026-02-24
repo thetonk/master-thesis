@@ -8,8 +8,8 @@ import os
 import json
 import argparse
 import signal
-import pandas as pd
 import numpy as np
+import pandas as pd
 import torch
 from torcheval.metrics import MulticlassAccuracy, BinaryAccuracy
 from torch.utils.data import TensorDataset, DataLoader, Subset, random_split

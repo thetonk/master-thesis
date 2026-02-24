@@ -9,11 +9,11 @@ import json
 import tempfile
 import argparse
 import signal
+import numpy as np
 import torch
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, Subset, random_split
 import pandas as pd
-import numpy as np
 from scipy.stats import ttest_rel, wilcoxon
 from torcheval.metrics import BinaryAccuracy, MulticlassAccuracy
 from sklearn.model_selection import StratifiedKFold
@@ -32,12 +32,12 @@ def train_test_model(pipe, model, model_config, train_dataset,
     learning_rate = model_config["learning_rate"]
     epochs = model_config["epochs"]
     model = model.to(device)
-    train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=N_WORKERS, pin_memory=True)
-    test_loader = DataLoader(test_dataset, batch_size, num_workers=N_WORKERS, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=N_WORKERS, pin_memory=True, prefetch_factor=4)
+    test_loader = DataLoader(test_dataset, batch_size, num_workers=N_WORKERS, pin_memory=True, prefetch_factor=4)
     val_loader = None
     early_stopper = None
     if val_dataset is not None:
-        val_loader = DataLoader(val_dataset, batch_size, num_workers=N_WORKERS, pin_memory=True)
+        val_loader = DataLoader(val_dataset, batch_size, num_workers=N_WORKERS, pin_memory=True, prefetch_factor=2)
         early_stopper = ttutils.EarlyStopping(ttutils.get_patience(epochs), 2.5e-3)
     with tempfile.NamedTemporaryFile(suffix=".pt") as tmpfile:
         ttutils.train_model(model, tmpfile.name, train_loader, val_loader, early_stopper=early_stopper,
@@ -112,12 +112,6 @@ if __name__ == "__main__":
 
         model_1_dropped_columns = model_2_dropped_columns = dropped_columns = []
         if remove_features:
-            if model_1_type == ModelTypes.TRANSFORMER:
-                model_1_dropped_columns = ["Timestamp", "Src IP", "Dst IP", "Idle Mean", "Idle Min", "Idle Max"]
-            elif model_1_type == ModelTypes.LSTM:
-                lstm_dropped_columns = ["Timestamp", "Fwd Seg Size Min"]
-            else:
-                raise NotImplementedError("Feature removal for CNN is currently not supported!")
             model_1_dropped_columns = get_dropped_columns(model_1_type)
             model_2_dropped_columns = get_dropped_columns(model_2_type)
             print(f"For the {model_1_type} model the following features are being dropped:")
