@@ -29,4 +29,5 @@ dependencies = [
     "torchinfo>=1.8.0",
     "torchvision>=0.23.0",
     "umap-learn>=0.5.11",
+    "xlsxwriter>=3.2.9",
 ]
