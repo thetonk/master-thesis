@@ -14,7 +14,7 @@ import torch
 from torch.utils.data import TensorDataset
 from sklearn.model_selection import StratifiedShuffleSplit
 import pandas as pd
-from utils.models import ModelTypes
+import polars as pl
 
 #np.random.seed(42)
 
@@ -29,7 +29,8 @@ FEATURE_COLUMNS = (
     "Fwd Act Data Pkts","Fwd Seg Size Min","Active Mean","Active Std","Active Max","Active Min","Idle Mean","Idle Std","Idle Max","Idle Min"
 )
 
-def get_dropped_columns(model_type: ModelTypes, unified_removal=False) -> list[str]:
+def get_dropped_columns(model_type, unified_removal=False) -> list[str]:
+    from utils.models import ModelTypes
     dropped_columns = ["Timestamp"]
     if not unified_removal:
         if model_type == ModelTypes.TRANSFORMER:
@@ -54,7 +55,7 @@ def _prepare_numeric_columns(df: pd.DataFrame, label_column = "Label") -> pd.Dat
 class CSVDataset():
     def __init__(self, dataset_path, label_column, feature_columns=FEATURE_COLUMNS,
                  columns_to_drop=["Timestamp"], chunk_size=1e+6):
-        self._chunk_size = chunk_size
+        self._chunk_size = int(chunk_size)
         self._label_column = label_column.replace("_", " ")
         self._columns_to_drop = columns_to_drop
         self.dataset_path = dataset_path
@@ -88,34 +89,46 @@ class CSVDataset():
                 yield chunk
         del dtypes, cols
 
-    
-    def load(self, balance_classes=True, rows_limit=500e+3):
-        rows_limit = int(rows_limit)
+
+    @staticmethod
+    def _read_csv_in_batches_pl(file_path, columns_to_drop, chunk_size=int(1e+6)):
+        # convert all numeric data from float64 to float32, save memory, as model uses float32
+        cols = [col for col in FEATURE_COLUMNS if col not in columns_to_drop]
+        lazy_df = (pl.scan_csv(file_path, separator=",", try_parse_dates=False, low_memory=False)
+                   .select(cols)
+                   .rename(lambda c: c.replace("_", " "))
+                   .with_columns(pl.all().cast(pl.Float32)))
+        for batch in lazy_df.collect_batches(chunk_size=chunk_size):
+            print("Chunk shape", batch.shape, "Datatypes", batch.dtypes)
+            yield batch
+        del cols
+
+
+    def load(self, balance_classes=True, rows_limit=int(500e+3), normal_bias=False):
         label_column = self._label_column
-        self.n_rows = 0
-        # preallocate x tensor to save memory
-        with open(self.dataset_path, "r") as f:
-            for _ in f:
-                self.n_rows += 1
-        # remove header line
-        self.n_rows -= 1
+        self.n_rows = pl.scan_csv(self.dataset_path).select(pl.len()).collect().item()
         x_tensor = torch.empty(size=(self.n_rows, self.n_features), dtype=torch.float32)
-        #tensors = []
         offset = 0
-        for chunk in CSVDataset._read_csv_in_chunks(self.dataset_path, self._columns_to_drop, chunk_size=self._chunk_size):
+        for chunk in CSVDataset._read_csv_in_batches_pl(self.dataset_path, self._columns_to_drop, self._chunk_size):
             n = len(chunk)
-            x_tensor[offset:offset+n] = torch.from_numpy(chunk.to_numpy(dtype="float32"))
+            x_tensor[offset:offset+n] = torch.from_numpy(chunk.to_numpy())
             offset += n
-            #tensors.append(torch.from_numpy(chunk.to_numpy(dtype="float32")))
         assert offset == x_tensor.shape[0]
-        #x_tensor = torch.cat(tensors, dim=0)
-        y_df = pd.read_csv(self.dataset_path, delimiter=",", usecols=[label_column], dtype={label_column: "category"})
-        labels: pd.Series = y_df[label_column]
-        del y_df
-        y_tensor = torch.from_numpy(labels.cat.codes.to_numpy(dtype="int64"))
+        y_lazy_df = (pl.scan_csv(self.dataset_path, separator=",", low_memory=False, try_parse_dates=False)
+                     .select(label_column)
+                     .cast({label_column: pl.Categorical})
+                     .with_row_index("idx")
+                     )
+        y_df = y_lazy_df.collect()
+        labels = y_df.select(label_column).to_series()
+        y_tensor = torch.from_numpy(labels.to_physical().cast(pl.Int64).to_numpy())
+        categories = labels.cat.get_categories()
+        self.categories = dict(enumerate(categories))
+        minimum_class_samples = labels.to_physical().value_counts(name="n").select(pl.col("n").min()).item()
+        del labels
+        self.n_classes = len(self.categories)
         if balance_classes:
-            num_classes = len(labels.cat.categories)
-            minimum_class_samples = labels.cat.codes.value_counts().min()
+            num_classes = len(categories)
             required_samples_per_class = int(rows_limit / num_classes)
             if rows_limit > 1:
                 rows_limit_per_class = min(minimum_class_samples, required_samples_per_class)
@@ -124,8 +137,13 @@ class CSVDataset():
             if rows_limit_per_class < required_samples_per_class:
                 print(f"Warning: dataset {self.dataset_path} minority class has less samples than the required! Has: {minimum_class_samples} samples!", file=sys.stderr)
             indexes = []
-            for category in labels.cat.categories:
-                indexes += labels.index[labels == category].to_series().sample(n=rows_limit_per_class).to_list()
+            for category in categories:
+                print(category)
+                samples = rows_limit_per_class
+                if normal_bias and category == "Normal":
+                    samples = int(8 * rows_limit_per_class)
+                    print("Applying normal sample bias! Normal samples: ", samples)
+                indexes += (y_df.filter(pl.col(label_column) == category).select("idx").to_series().sample(n=samples).to_list())
             # shuffle indexes to mix samples of each class
             #random.shuffle(indexes)
             self.X = x_tensor[indexes]
@@ -139,9 +157,6 @@ class CSVDataset():
             else:
                 self.X = x_tensor
                 self.y = y_tensor
-        del x_tensor, y_tensor
-        self.categories = dict(enumerate(labels.cat.categories))
-        self.n_classes = len(self.categories)
 
 
 class LoadedTensorDataset():
@@ -383,19 +398,40 @@ def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", ch
     print(f"CSV dataset merge completed successfully!")
 
 
+def extract_class_from_datasets(csv_directory: os.PathLike, label_column: str, extracted_class: str, leftover_csv_dataset: os.PathLike):
+    print(f"Extracting class {extracted_class} to separate dataset!")
+    #header_inserted = False
+    extracted_csv_dataset = os.path.join(os.path.dirname(leftover_csv_dataset), f"{extracted_class.lower()}_extracted.csv")
+    for root, _ ,files in os.walk(csv_directory):
+        for file in files:
+            csv_dataset = os.path.join(root, file)
+            lazy_df = pl.scan_csv(csv_dataset, separator=",", try_parse_dates=False)
+            lazy_df = lazy_df.select([c for c in lazy_df.columns if not c.startswith("Unnamed")])
+            extracted_lazy = lazy_df.filter(pl.col(label_column) == extracted_class)
+            leftover_lazy = lazy_df.filter(pl.col(label_column) != extracted_class)
+            # Stream to CSV (lazy execution, memory-efficient)
+            extracted_lazy.sink_csv(extracted_csv_dataset)
+            leftover_lazy.sink_csv(leftover_csv_dataset)
+    print("Done!")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("dataset_folder", type=str, help="Dataset folder containing CSV files")
-    parser.add_argument("merged_dataset_path", type=str, help="Path to save the merged CSV dataset")
+    parser.add_argument("output_dataset_path", type=str, help="Path to save the unified processed CSV dataset")
     parser.add_argument("label_column", type=str, help="The name of the column that will be used as class.", default="Label")
     parser.add_argument("benign_label", type=str, help="The label of benign samples", default="Normal")
     parser.add_argument("-m", "--multiclass", action="store_true", help="Use multiclass labeling instead of binary")
+    parser.add_argument("-x", "--extract-class", type=str, help="Class name to extract to separate file")
     args = parser.parse_args()
     dataset_folder = args.dataset_folder
-    merged_dataset_path = args.merged_dataset_path
+    output_dataset_path = args.output_dataset_path
     label_column = args.label_column
     benign_label = args.benign_label
     use_multiclass = args.multiclass
-    merge_cicflow_csvs(dataset_folder, merged_dataset_path, label_column, 2e+6,
-                       benign_label, use_multiclass)
+    if args.extract_class is None:
+        merge_cicflow_csvs(dataset_folder, output_dataset_path, label_column, 2e+6,
+                        benign_label, use_multiclass)
+    else:
+        extract_class_from_datasets(dataset_folder, label_column, args.extract_class, output_dataset_path)
 

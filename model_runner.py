@@ -44,6 +44,7 @@ if __name__ == "__main__":
     parser.add_argument("-u", "--unified-removal", action="store_true", help="Reemove network specific features regardless of model type")
     parser.add_argument("-e", "--early-stop", action="store_true", help="Use early stopping")
     parser.add_argument("-b", "--binary-metrics", action="store_true", help="Use binary metrics instead of multiclass")
+    parser.add_argument("-n", "--normal-bias", action="store_true", help="Apply biasing towards normal samples")
     parser.add_argument("-p", "--dataset-percentage", type=int, help="Percentage of dataset to use (0-100), default is 100", default=100)
     dataset_args = parser.add_mutually_exclusive_group(required=False)
     dataset_args.add_argument("-f", "--file", type=str, help="Dataset CSV file", dest="dataset_file")
@@ -68,6 +69,7 @@ if __name__ == "__main__":
         config_file = args.config
         use_early_stop = args.early_stop
         use_binary_metrics = args.binary_metrics
+        use_normal_bias = args.normal_bias
         dataset_percentage = args.dataset_percentage
         raytune_results_dir = os.path.join("tests", "results", "raytune")
         if args.subcommand == "custom_tt":
@@ -139,7 +141,7 @@ if __name__ == "__main__":
         model_file = f"best_model_{model_name}_{dataset_name}"
         csv_dataset = dataset_utils.CSVDataset(dataset_file, label_column, columns_to_drop=dropped_columns, chunk_size=3e+6)
         rows_limit = int(250e+3 * dataset_percentage / 100)
-        csv_dataset.load(balance_classes=True, rows_limit=rows_limit)
+        csv_dataset.load(balance_classes=True, rows_limit=rows_limit, normal_bias=use_normal_bias)
         X, y, category_map, feature_names = csv_dataset.X, csv_dataset.y, csv_dataset.categories, csv_dataset.features
         num_classes = csv_dataset.n_classes
         class_frequencies = y.bincount(minlength=num_classes)
