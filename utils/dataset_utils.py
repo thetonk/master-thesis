@@ -5,7 +5,6 @@
 
 import os
 import hashlib
-#import random
 import sys
 import argparse
 import ipaddress
@@ -71,27 +70,9 @@ class CSVDataset():
         self.features = df.columns.to_list()
         self.n_features = len(self.features)
 
-    
-    @staticmethod
-    def _read_csv_in_chunks(file_path, columns_to_drop, chunk_size=1e+6):
-        # convert all numeric data from float64 to float32, save memory, as model uses float32
-        cols = [col for col in FEATURE_COLUMNS if col not in columns_to_drop]
-        dtypes = {
-            c: "float32"
-            for c in cols
-        }
-        with pd.read_csv(file_path, chunksize=chunk_size, low_memory=False, dtype=dtypes, usecols=cols, delimiter=",") as csv_reader:
-            for chunk in csv_reader:
-                chunk: pd.DataFrame
-                chunk.columns = chunk.columns.str.replace("_", " ")
-                #chunk = _prepare_numeric_columns(chunk)
-                print("Chunk shape:",chunk.shape, "Datatypes:", chunk.dtypes)
-                yield chunk
-        del dtypes, cols
-
 
     @staticmethod
-    def _read_csv_in_batches_pl(file_path, columns_to_drop, chunk_size=int(1e+6)):
+    def _read_csv_in_batches(file_path, columns_to_drop, chunk_size=int(1e+6)):
         # convert all numeric data from float64 to float32, save memory, as model uses float32
         cols = [col for col in FEATURE_COLUMNS if col not in columns_to_drop]
         lazy_df = (pl.scan_csv(file_path, separator=",", try_parse_dates=False, low_memory=False)
@@ -109,7 +90,7 @@ class CSVDataset():
         self.n_rows = pl.scan_csv(self.dataset_path).select(pl.len()).collect().item()
         x_tensor = torch.empty(size=(self.n_rows, self.n_features), dtype=torch.float32)
         offset = 0
-        for chunk in CSVDataset._read_csv_in_batches_pl(self.dataset_path, self._columns_to_drop, self._chunk_size):
+        for chunk in CSVDataset._read_csv_in_batches(self.dataset_path, self._columns_to_drop, self._chunk_size):
             n = len(chunk)
             x_tensor[offset:offset+n] = torch.from_numpy(chunk.to_numpy())
             offset += n
@@ -144,8 +125,6 @@ class CSVDataset():
                     samples = int(8 * rows_limit_per_class)
                     print("Applying normal sample bias! Normal samples: ", samples)
                 indexes += (y_df.filter(pl.col(label_column) == category).select("idx").to_series().sample(n=samples).to_list())
-            # shuffle indexes to mix samples of each class
-            #random.shuffle(indexes)
             self.X = x_tensor[indexes]
             self.y = y_tensor[indexes]
         else:
