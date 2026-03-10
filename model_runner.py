@@ -130,8 +130,10 @@ if __name__ == "__main__":
     results_dir = "results"
     trained_models_dir = os.path.join(results_dir, "trained_models")
     images_dir = os.path.join(results_dir, "images")
+    class_mappings_dir = os.path.join(results_dir, "class_mappings")
     os.makedirs(trained_models_dir, exist_ok=True)
     os.makedirs(images_dir, exist_ok=True)
+    os.makedirs(class_mappings_dir)
     tl_type = None #needed for zero/few shot transfer learning as well
     PATIENCE = ttutils.get_patience(epochs) # Needed for early stopping
     DELTA = 2.5e-3 # Needed for early stopping
@@ -139,6 +141,7 @@ if __name__ == "__main__":
     if not load_directory:
         dataset_name = os.path.basename(dataset_file).split(".")[0]
         model_file = f"best_model_{model_name}_{dataset_name}"
+        class_mappings_file = f"mappings_{model_name}_{dataset_name}"
         csv_dataset = dataset_utils.CSVDataset(dataset_file, label_column, columns_to_drop=dropped_columns, chunk_size=3e+6)
         rows_limit = int(250e+3 * dataset_percentage / 100)
         csv_dataset.load(balance_classes=True, rows_limit=rows_limit, normal_bias=use_normal_bias)
@@ -158,6 +161,7 @@ if __name__ == "__main__":
             print(f"Running in {'zero-shot' if zero_shot else 'few-shot'} mode!")
             tl_type = f"{'zero_shot' if zero_shot else 'few_shot'}"
             model_file = f"best_model_{model_name}_{tl_type}_TL"
+            class_mappings_file = f"mappings_{model_name}_{tl_type}"
             if use_custom_train_test:
                 print("Loading training datasets...")
                 train_dataset = dataset_utils.load_datasets_from_dir(args.train_dir, label_column, rows_per_dataset=rows_per_dataset,
@@ -178,6 +182,7 @@ if __name__ == "__main__":
             datatype = dataset_list[0].dtype
         else:
             model_file = f"best_model_{model_name}_merged_ds"
+            class_mappings_file = f"mappings_{model_name}_merged_ds"
             loaded_dataset = dataset_utils.load_datasets_from_dir(dataset_folder, label_column, rows_per_dataset=rows_per_dataset,
                                                                   drop_columns=dropped_columns, balance_classes=True)
             dataset = loaded_dataset.dataset
@@ -193,11 +198,15 @@ if __name__ == "__main__":
     if args.remove_features:
         dataset_name += "_removed"
         model_file += "_removed"
+        class_mappings_file += "_removed"
     if dataset_percentage < 100:
         dataset_name += f"_{dataset_percentage}"
         model_file += f"f_{dataset_percentage}"
+        class_mappings_file += f"_{dataset_percentage}"
 
     model_filename = os.path.join(trained_models_dir, f"{model_file}.pt")
+    class_mappings_filename = os.path.join(class_mappings_dir, f"{class_mappings_file}.json")
+    ttutils.save_class_mapping(category_map, class_mappings_filename)
     print(f"# of rows: {num_rows}, # of features: {num_features}, # of classes: {num_classes}, datatype: {datatype}")
     df_list = []
     local_test_df_list = []  # needed for zero/few shot transfer learning, otherwise is unused

@@ -4,6 +4,7 @@
 # See the LICENSE file in the project root for full license text.
 
 import time
+import json
 import numpy as np
 import torch
 import torch.nn as nn
@@ -273,3 +274,15 @@ def get_all_cuda_devices():
     else:
         print("CUDA is not available")
         yield None
+
+
+def save_class_mapping(class_mapping: dict[int,str] | None, mapping_file: str):
+    assert class_mapping is not None
+    with open(mapping_file, "w") as file:
+        json.dump(class_mapping, file, indent=4)
+
+
+def get_class_mapping(mapping_file: str) -> dict[int, str]:
+    with open(mapping_file, "r") as file:
+        class_mapping = json.load(file)
+    return class_mapping

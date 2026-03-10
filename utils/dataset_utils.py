@@ -80,7 +80,7 @@ class CSVDataset():
                    .rename(lambda c: c.replace("_", " "))
                    .with_columns(pl.all().cast(pl.Float32)))
         for batch in lazy_df.collect_batches(chunk_size=chunk_size):
-            print("Chunk shape", batch.shape, "Datatypes", batch.dtypes)
+            print("Schema: ", batch.schema)
             yield batch
         del cols
 
