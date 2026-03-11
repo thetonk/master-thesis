@@ -18,9 +18,9 @@ import shap
 from shap.plots import bar
 
 
-def _correct(output: torch.Tensor, target: torch.Tensor):
-    predicted = output.argmax(dim=1)
-    return (predicted == target).sum().item()
+#def _correct(output: torch.Tensor, target: torch.Tensor):
+#    predicted = output.argmax(dim=1)
+#    return (predicted == target).sum().item()
 
 
 class EarlyStopping():
@@ -43,8 +43,8 @@ class EarlyStopping():
 
 
 def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader, val_loader: DataLoader | None, metric: Metric,
-                loss_function = nn.CrossEntropyLoss(), epochs: int = 30,
-                learning_rate: float = 1e-3, device=torch.device("cuda"), train_tune=False, early_stopper: EarlyStopping | None =None):
+                loss_function = nn.CrossEntropyLoss(), epochs: int = 30, learning_rate: float = 1e-3,
+                device=torch.device("cuda"), train_tune=False, early_stopper: EarlyStopping | None =None, is_classifier=True) -> float | None:
     #torch.autograd.set_detect_anomaly(True)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     best_loss = float("inf")
@@ -65,7 +65,8 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
             loss = loss_function(output, label)
             total_loss += loss.item()
             #total_correct += _correct(output, label)
-            output = output.argmax(dim=1)
+            if is_classifier:
+                output = output.argmax(dim=1)
             metric.update(output, label)
             optimizer.zero_grad()
             loss.backward()
@@ -79,7 +80,7 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
         print("="*50)
         print(f"Epoch {epoch+1}/{epochs}. Average train accuracy: {train_accuracy*100:.3f}%, average loss: {train_loss:.5f}, current loss: {loss:.5f}.")
         if val_loader is not None:
-            with torch.no_grad():
+            with torch.inference_mode():
                 metric.reset()
                 batch_number = len(val_loader)
                 total_loss = 0
@@ -88,7 +89,8 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
                     output = model(data)
                     loss = loss_function(output, label)
                     total_loss += loss.item()
-                    output = output.argmax(dim=1)
+                    if is_classifier:
+                        output = output.argmax(dim=1)
                     metric.update(output, label)
                 val_loss = total_loss / batch_number
                 val_accuracy = metric.compute().item()
@@ -112,30 +114,30 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
     print(f"Training took {stop_time - start_time} seconds.")
 
 
-def test_model(model: nn.Module, test_loader: DataLoader, metrics: list[Metric],
-               loss_function = nn.CrossEntropyLoss(), device: torch.device = torch.device("cuda")) -> list[np.ndarray]:
+def test_model(model: nn.Module, test_loader: DataLoader, metrics: list[Metric], loss_function = nn.CrossEntropyLoss(),
+                device: torch.device = torch.device("cuda"), is_classifier=True) -> list[np.ndarray]:
     model.eval()
     num_batches = len(test_loader)
-    num_items = len(test_loader.dataset)
     test_loss = 0
-    total_correct = 0
     metric_results = []
-    with torch.no_grad():
+    with torch.inference_mode():
         for data, label in test_loader:
             data = data.to(device)
             label = label.to(device)
             output = model(data)
             loss = loss_function(output, label)
             test_loss = loss.item()
-            total_correct += _correct(output, label)
-            output = output.argmax(dim=1)
+            if is_classifier:
+                output = output.argmax(dim=1)
             for metric in metrics:
                 metric.update(output, label)
-    test_loss = test_loss/num_batches
-    accuracy = total_correct/num_items
-    print(f"Testset accuracy: {100*accuracy:.3f}%, average loss: {test_loss}")
     for metric in metrics:
         metric_results.append(metric.compute().cpu().numpy())
+    test_loss = test_loss/num_batches
+    # First metric is accuracy according to prepare_test_metrics() function
+    accuracy = metric_results[0]
+    accuracy = accuracy.mean().item() if accuracy.shape[0] > 1 else accuracy.item()
+    print(f"Testset accuracy: {100*accuracy:.3f}%, average loss: {test_loss}")
     return metric_results
 
 
@@ -174,7 +176,7 @@ def plot_shap_values(model, dataset, category_map, num_classes, feature_names, p
     model.eval()
     background = features[:100]
     test_values = features[100:]
-    with torch.no_grad():
+    with torch.inference_mode():
         base_values = model(background).mean(dim=0).numpy()
     explainer = shap.GradientExplainer(model, background)
     shap_values = explainer.shap_values(test_values)
@@ -222,13 +224,14 @@ def plot_shap_values(model, dataset, category_map, num_classes, feature_names, p
     return shap_values_per_class
 
 
-def prepare_test_metrics(num_classes: int, device: torch.device = torch.device("cuda"), binary_class=False, confusion_matrix=True) -> list[Metric]:
+def prepare_test_metrics(num_classes: int, device: torch.device = torch.device("cuda"), 
+                         binary_class=False, binary_threshold=0.5, confusion_matrix=True) -> list[Metric]:
     if binary_class:
-        accuracy_metric = BinaryAccuracy(device=device)
-        f1_metric = BinaryF1Score(device=device)
-        confusion_matrix_metric = BinaryConfusionMatrix(device=device)
-        precision_metric = BinaryPrecision(device=device)
-        recall_metric = BinaryRecall(device=device)
+        accuracy_metric = BinaryAccuracy(threshold=binary_threshold, device=device)
+        f1_metric = BinaryF1Score(threshold=binary_threshold, device=device)
+        confusion_matrix_metric = BinaryConfusionMatrix(threshold=binary_threshold, device=device)
+        precision_metric = BinaryPrecision(threshold=binary_threshold, device=device)
+        recall_metric = BinaryRecall(threshold=binary_threshold, device=device)
     else:
         accuracy_metric = MulticlassAccuracy(average=None, num_classes=num_classes, device=device)
         f1_metric = MulticlassF1Score(num_classes=num_classes, device=device, average=None)

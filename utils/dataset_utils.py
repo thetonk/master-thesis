@@ -201,36 +201,40 @@ def load_datasets_from_dir(dataset_dir, label_column: str, drop_columns: list | 
         return LoadedTensorDataset(dataset, num_rows, num_features, dataset_categories, feature_names, dtype)
 
 
-def prepare_few_shot_train_test(train_dataset: TensorDataset, test_dataset: TensorDataset,
+def infuse_samples(src_dataset: TensorDataset, dst_dataset: TensorDataset,
                                 samples_per_class: int, class_values):
-    x_test_initial = test_dataset.tensors[0]
-    y_test_initial = test_dataset.tensors[1]
-    x = train_dataset.tensors[0]
-    y = train_dataset.tensors[1]
+    x_dst_initial = dst_dataset.tensors[0]
+    y_dst_initial = dst_dataset.tensors[1]
+    x = src_dataset.tensors[0]
+    y = src_dataset.tensors[1]
+    dst_samples = x_dst_initial.shape[0]
+    requested_samples = len(class_values)*samples_per_class
+    if (dst_samples < requested_samples):
+        print("Warning: Destination dataset has less samples than requested! Requested: ", requested_samples, "available: ", dst_samples)
     # shuffle test set so infused samples are random each time
-    random_indices = torch.randperm(x_test_initial.shape[0])
-    x_test_initial = x_test_initial[random_indices]
-    y_test_initial = y_test_initial[random_indices]
+    random_indices = torch.randperm(x_dst_initial.shape[0])
+    x_dst_initial = x_dst_initial[random_indices]
+    y_dst_initial = y_dst_initial[random_indices]
     del random_indices
     infused_indices_list = []
     for class_value in class_values:
-        infused_samples_indexes = (y_test_initial == class_value).nonzero(as_tuple=True)[0][:samples_per_class]
+        infused_samples_indexes = (y_dst_initial == class_value).nonzero(as_tuple=True)[0][:samples_per_class]
         infused_indices_list += [int(i) for i in infused_samples_indexes]
         del infused_samples_indexes
-    x_infused = x_test_initial[infused_indices_list]
-    y_infused = y_test_initial[infused_indices_list]
-    test_indices_mask = torch.ones(y_test_initial.shape[0], dtype=torch.bool)
-    test_indices_mask[infused_indices_list] = False
-    x_test = x_test_initial[test_indices_mask]
-    y_test = y_test_initial[test_indices_mask]
+    x_infused = x_dst_initial[infused_indices_list]
+    y_infused = y_dst_initial[infused_indices_list]
+    dst_indices_mask = torch.ones(y_dst_initial.shape[0], dtype=torch.bool)
+    dst_indices_mask[infused_indices_list] = False
+    x_dst = x_dst_initial[dst_indices_mask]
+    y_dst = y_dst_initial[dst_indices_mask]
     x = torch.cat((x, x_infused), dim=0)
     y = torch.cat((y, y_infused), dim=0)
-    test_dataset = TensorDataset(x_test, y_test)
-    del x_test, y_test, x_infused, y_infused, infused_indices_list, test_indices_mask
+    dst_dataset = TensorDataset(x_dst, y_dst)
+    del x_dst, y_dst, x_infused, y_infused, infused_indices_list, dst_indices_mask
     print(f"Final # of rows after infusion: {x.shape[0]}")
-    train_dataset = TensorDataset(x, y)
-    del x_test_initial, y_test_initial, x, y
-    return train_dataset, test_dataset
+    src_dataset = TensorDataset(x, y)
+    del x_dst_initial, y_dst_initial, x, y
+    return src_dataset, dst_dataset
 
 
 def merge_cicflow_csvs(csvs_directory, merged_csv_path, label_column="Label", chunk_size=1e+6, benign_label=None, multiclass=False):

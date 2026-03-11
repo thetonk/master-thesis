@@ -7,7 +7,7 @@ import argparse
 import os
 import torch
 import json
-from utils.models import MyLSTMClassifier, MyModel
+from utils.models import MyLSTMClassifier, MyTransformerModel
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(add_help=True, description="Convert pytorch models to ONNX format")
@@ -29,7 +29,7 @@ if __name__ == "__main__":
         del config["lr"], config["batch_size"]
     model_hyperparameters = config
     if model_type == "transformer":
-        model = MyModel(NUM_FEATURES, NUM_CLASSES, **model_hyperparameters)
+        model = MyTransformerModel(NUM_FEATURES, NUM_CLASSES, **model_hyperparameters)
     else:
         model = MyLSTMClassifier(NUM_CLASSES, **model_hyperparameters, device="cpu")
     dummy_input = (torch.randn(256, NUM_FEATURES),)

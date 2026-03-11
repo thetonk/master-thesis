@@ -12,6 +12,7 @@ class ModelTypes(enum.StrEnum):
     CNN = enum.auto()
     TRANSFORMER = enum.auto()
     LSTM = enum.auto()
+#    AUTOENCODER = enum.auto()
 
 
 def get_model(model_type: ModelTypes, model_hyperparameters, num_features, num_classes) -> torch.nn.Module:
@@ -64,6 +65,7 @@ class MLPClassifier(nn.Module):
             nn.Linear(hidden_neurons, n_classes)
         )
 
+
     def forward(self, x: torch.Tensor):
         return self.layers(x)
     
@@ -92,7 +94,7 @@ class MyTransformerModel(nn.Module):
         self.mlp_layers = nn.Sequential(*mlp_list)
 
 
-    def forward(self, x: torch.tensor):
+    def forward(self, x: torch.Tensor):
         x = self.transformer_layers(x)
         x = self.mlp_layers(x)
         return x
@@ -162,10 +164,40 @@ class MyCNNModel(nn.Module):
         )
         self.flatten = nn.Flatten()
 
-    def forward(self, x):
+
+    def forward(self, x: torch.Tensor):
         x = x.unsqueeze(1)
         x = self.cnn_model(x)
         x = self.global_avg_pool(x)
         x = self.flatten(x)
         x = self.mlp_classifier(x)
         return x
+
+
+class MyAutoEncoderModel(nn.Module):
+    def __init__(self, n_features):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(n_features, 64),
+            nn.ReLU(),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 16),
+            nn.ReLU(),
+            nn.Linear(16,8),
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(8, 16),
+            nn.ReLU(),
+            nn.Linear(16, 32),
+            nn.ReLU(),
+            nn.Linear(32, 64),
+            nn.ReLU(),
+            nn.Linear(64, n_features),
+        )
+
+
+    def forward(self, x: torch.Tensor):
+        z = self.encoder(x)
+        out = self.decoder(z)
+        return out

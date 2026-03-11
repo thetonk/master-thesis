@@ -133,7 +133,7 @@ if __name__ == "__main__":
     class_mappings_dir = os.path.join(results_dir, "class_mappings")
     os.makedirs(trained_models_dir, exist_ok=True)
     os.makedirs(images_dir, exist_ok=True)
-    os.makedirs(class_mappings_dir)
+    os.makedirs(class_mappings_dir, exist_ok=True)
     tl_type = None #needed for zero/few shot transfer learning as well
     PATIENCE = ttutils.get_patience(epochs) # Needed for early stopping
     DELTA = 2.5e-3 # Needed for early stopping
@@ -238,7 +238,7 @@ if __name__ == "__main__":
                     train_dataset = TensorDataset(X, y)
                     class_values = category_map.keys()
                     if few_shot:
-                        train_dataset, test_dataset = dataset_utils.prepare_few_shot_train_test(
+                        train_dataset, test_dataset = dataset_utils.infuse_samples(
                             TensorDataset(X, y), test_dataset, few_shot_samples_per_class, class_values)
                     del X, y
                     val_loader = None
