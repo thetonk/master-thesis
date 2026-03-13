@@ -5,6 +5,7 @@
 
 import sys
 import os
+import traceback
 import json
 import tempfile
 import argparse
@@ -278,6 +279,7 @@ if __name__ == "__main__":
                     model_2_metrics_df_list.append(metrics_df)
     except Exception as e:
         print("Exception occurred!", e, file=sys.stderr)
+        traceback.print_exc()
     finally:
         if len(model_1_metrics_df_list) > 0:
             print("Saving statistics...")

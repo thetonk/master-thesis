@@ -43,12 +43,24 @@ def get_dropped_columns(model_type, unified_removal=False) -> list[str]:
                                     "Idle Mean", "Idle Min", "Idle Max"]
     return dropped_columns
 
+
 def _prepare_numeric_columns(df: pd.DataFrame, label_column = "Label") -> pd.DataFrame:
     non_numeric_columns = ["Src IP", "Dst IP", "Timestamp", label_column]
     for column in df.columns:
         if column not in non_numeric_columns and not pd.api.types.is_numeric_dtype(df[column]):
             df[column] = pd.to_numeric(df[column], errors="coerce", downcast="float")
     return df
+
+
+class LoadedTensorDataset():
+    def __init__(self, dataset: TensorDataset, n_rows: int, n_features: int, categories: dict, feature_names, dtype=torch.float32):
+        self.dataset = dataset
+        self.num_rows = n_rows
+        self.num_features = n_features
+        self.categories = categories
+        self.num_classes = len(categories)
+        self.feature_names = feature_names
+        self.dtype = dtype
 
 
 class CSVDataset():
@@ -85,7 +97,7 @@ class CSVDataset():
         del cols
 
 
-    def load(self, balance_classes=True, rows_limit=int(500e+3), normal_bias=False):
+    def load(self, balance_classes=True, rows_limit=int(500e+3), normal_bias=False) -> LoadedTensorDataset:
         label_column = self._label_column
         self.n_rows = pl.scan_csv(self.dataset_path).select(pl.len()).collect().item()
         x_tensor = torch.empty(size=(self.n_rows, self.n_features), dtype=torch.float32)
@@ -136,17 +148,7 @@ class CSVDataset():
             else:
                 self.X = x_tensor
                 self.y = y_tensor
-
-
-class LoadedTensorDataset():
-    def __init__(self, dataset: TensorDataset, n_rows: int, n_features: int, categories: dict, feature_names, dtype=torch.float32):
-        self.dataset = dataset
-        self.num_rows = n_rows
-        self.num_features = n_features
-        self.categories = categories
-        self.num_classes = len(categories)
-        self.feature_names = feature_names
-        self.dtype = dtype
+        return LoadedTensorDataset(TensorDataset(self.X, self.y), self.n_rows, self.n_features, self.categories, self.features)
 
 
 def load_datasets_from_dir(dataset_dir, label_column: str, drop_columns: list | None = None,
@@ -201,39 +203,42 @@ def load_datasets_from_dir(dataset_dir, label_column: str, drop_columns: list | 
         return LoadedTensorDataset(dataset, num_rows, num_features, dataset_categories, feature_names, dtype)
 
 
-def infuse_samples(src_dataset: TensorDataset, dst_dataset: TensorDataset,
-                                samples_per_class: int, class_values):
-    x_dst_initial = dst_dataset.tensors[0]
-    y_dst_initial = dst_dataset.tensors[1]
-    x = src_dataset.tensors[0]
-    y = src_dataset.tensors[1]
-    dst_samples = x_dst_initial.shape[0]
-    requested_samples = len(class_values)*samples_per_class
-    if (dst_samples < requested_samples):
-        print("Warning: Destination dataset has less samples than requested! Requested: ", requested_samples, "available: ", dst_samples)
+def inject_samples(src_dataset: TensorDataset, dst_dataset: TensorDataset,
+                                samples_per_class: int, src_class_values, inject_y_label_value=None):
+    x_src_initial = src_dataset.tensors[0]
+    y_src_initial = src_dataset.tensors[1]
+    x = dst_dataset.tensors[0]
+    y = dst_dataset.tensors[1]
+    src_samples = x_src_initial.shape[0]
+    requested_samples = len(src_class_values)*samples_per_class
+    if (src_samples < requested_samples):
+        print("Warning: Source dataset has less samples than requested! Requested: ", requested_samples, "available: ", src_samples)
     # shuffle test set so infused samples are random each time
-    random_indices = torch.randperm(x_dst_initial.shape[0])
-    x_dst_initial = x_dst_initial[random_indices]
-    y_dst_initial = y_dst_initial[random_indices]
+    random_indices = torch.randperm(x_src_initial.shape[0])
+    x_src_initial = x_src_initial[random_indices]
+    y_src_initial = y_src_initial[random_indices]
     del random_indices
     infused_indices_list = []
-    for class_value in class_values:
-        infused_samples_indexes = (y_dst_initial == class_value).nonzero(as_tuple=True)[0][:samples_per_class]
+    for class_value in src_class_values:
+        infused_samples_indexes = (y_src_initial == class_value).nonzero(as_tuple=True)[0][:samples_per_class]
         infused_indices_list += [int(i) for i in infused_samples_indexes]
         del infused_samples_indexes
-    x_infused = x_dst_initial[infused_indices_list]
-    y_infused = y_dst_initial[infused_indices_list]
-    dst_indices_mask = torch.ones(y_dst_initial.shape[0], dtype=torch.bool)
-    dst_indices_mask[infused_indices_list] = False
-    x_dst = x_dst_initial[dst_indices_mask]
-    y_dst = y_dst_initial[dst_indices_mask]
+    x_infused = x_src_initial[infused_indices_list]
+    if inject_y_label_value is None:
+        y_infused = y_src_initial[infused_indices_list]
+    else:
+        y_infused = inject_y_label_value * torch.ones(requested_samples, dtype=torch.int64)
+    src_indices_mask = torch.ones(y_src_initial.shape[0], dtype=torch.bool)
+    src_indices_mask[infused_indices_list] = False
+    x_src = x_src_initial[src_indices_mask]
+    y_src = y_src_initial[src_indices_mask]
     x = torch.cat((x, x_infused), dim=0)
     y = torch.cat((y, y_infused), dim=0)
-    dst_dataset = TensorDataset(x_dst, y_dst)
-    del x_dst, y_dst, x_infused, y_infused, infused_indices_list, dst_indices_mask
+    src_dataset = TensorDataset(x_src, y_src)
+    del x_src, y_src, x_infused, y_infused, infused_indices_list, src_indices_mask
     print(f"Final # of rows after infusion: {x.shape[0]}")
-    src_dataset = TensorDataset(x, y)
-    del x_dst_initial, y_dst_initial, x, y
+    dst_dataset = TensorDataset(x, y)
+    del x_src_initial, y_src_initial, x, y
     return src_dataset, dst_dataset
 
 

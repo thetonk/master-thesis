@@ -43,8 +43,8 @@ class EarlyStopping():
 
 
 def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader, val_loader: DataLoader | None, metric: Metric,
-                loss_function = nn.CrossEntropyLoss(), epochs: int = 30, learning_rate: float = 1e-3,
-                device=torch.device("cuda"), train_tune=False, early_stopper: EarlyStopping | None =None, is_classifier=True) -> float | None:
+                loss_function=nn.CrossEntropyLoss(), epochs: int = 30, learning_rate: float = 1e-3,
+                device=torch.device("cuda"), train_tune=False, early_stopper: EarlyStopping | None =None):
     #torch.autograd.set_detect_anomaly(True)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     best_loss = float("inf")
@@ -65,48 +65,47 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
             loss = loss_function(output, label)
             total_loss += loss.item()
             #total_correct += _correct(output, label)
-            if is_classifier:
-                output = output.argmax(dim=1)
+            output = output.argmax(dim=1)
             metric.update(output, label)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
         train_loss = total_loss/batch_number
         #train_accuracy = total_correct/samples
-        train_accuracy = metric.compute().item()
+        train_metric = metric.compute().item()
         if val_loader is None and train_loss < best_loss:
             best_loss = train_loss
             save_model = True
         print("="*50)
-        print(f"Epoch {epoch+1}/{epochs}. Average train accuracy: {train_accuracy*100:.3f}%, average loss: {train_loss:.5f}, current loss: {loss:.5f}.")
+        print(f"Epoch {epoch+1}/{epochs}. Average train accuracy: {train_metric*100:.3f}%, average loss: {train_loss:.5f}, current loss: {loss:.5f}.")
         if val_loader is not None:
             with torch.inference_mode():
                 metric.reset()
                 batch_number = len(val_loader)
                 total_loss = 0
                 for data, label in val_loader:
-                    data, label = data.to(device), label.to(device)
+                    data = data.to(device)
+                    label = label.to(device)
                     output = model(data)
                     loss = loss_function(output, label)
-                    total_loss += loss.item()
-                    if is_classifier:
-                        output = output.argmax(dim=1)
+                    output = output.argmax(dim=1)
                     metric.update(output, label)
+                    total_loss += loss.item()
                 val_loss = total_loss / batch_number
-                val_accuracy = metric.compute().item()
+                val_metric = metric.compute().item()
                 if val_loss < best_loss:
                     best_loss = val_loss
                     save_model = True
-                print(f"Validation accuracy: {val_accuracy*100:.3f}%, validation loss: {val_loss:.5f}")
+                print(f"Validation accuracy: {val_metric*100:.3f}%, validation loss: {val_loss:.5f}")
                 if train_tune:
-                    tune.report({"train_accuracy": train_accuracy, "val_accuracy": val_accuracy})
+                    tune.report({"train_accuracy": train_metric, "val_accuracy": val_metric})
                 # check for early stopping
                 if early_stopper is not None:
                     if early_stopper.check_stop(val_loss):
                         break
         elif train_tune and val_loader is None:
             print("Enabled tuning, but no validation loader is set!")
-            tune.report({"train_accuracy": train_accuracy})
+            tune.report({"train_accuracy": train_metric})
         if save_model:
             print("Saved model!")
             torch.save(model.state_dict(), model_filename)
@@ -114,35 +113,40 @@ def train_model(model: nn.Module, model_filename: str, train_loader: DataLoader,
     print(f"Training took {stop_time - start_time} seconds.")
 
 
-def test_model(model: nn.Module, test_loader: DataLoader, metrics: list[Metric], loss_function = nn.CrossEntropyLoss(),
-                device: torch.device = torch.device("cuda"), is_classifier=True) -> list[np.ndarray]:
+def test_model(model: nn.Module, test_loader: DataLoader, metrics: list[Metric], loss_function=None,
+                device: torch.device = torch.device("cuda")) -> list[np.ndarray]:
     model.eval()
     num_batches = len(test_loader)
     test_loss = 0
     metric_results = []
+    if loss_function is None:
+        loss_function = nn.CrossEntropyLoss()
     with torch.inference_mode():
         for data, label in test_loader:
             data = data.to(device)
-            label = label.to(device)
             output = model(data)
+            label = label.to(device)
             loss = loss_function(output, label)
-            test_loss = loss.item()
-            if is_classifier:
-                output = output.argmax(dim=1)
+            output = output.argmax(dim=1)
             for metric in metrics:
                 metric.update(output, label)
+            test_loss = loss.item()
     for metric in metrics:
         metric_results.append(metric.compute().cpu().numpy())
     test_loss = test_loss/num_batches
     # First metric is accuracy according to prepare_test_metrics() function
-    accuracy = metric_results[0]
-    accuracy = accuracy.mean().item() if accuracy.shape[0] > 1 else accuracy.item()
+    accuracy = metric_results[0].item()
     print(f"Testset accuracy: {100*accuracy:.3f}%, average loss: {test_loss}")
     return metric_results
 
 
-def plot_confusion_matrix(confusion_matrix, category_map, plot_filename):
-    # Plot last confusion matrix
+def plot_confusion_matrix(confusion_matrix: np.ndarray, category_map: dict, plot_filename: str, normalized=False):
+    if normalized:
+        confusion_matrix = np.round(confusion_matrix*100, 2)
+        title = "Confusion matrix (percentages)"
+    else:
+        confusion_matrix = np.round(confusion_matrix, 0)
+        title = "Confusion matrix"
     n_classes = confusion_matrix.shape[1]
     size = max(6.4, n_classes*1.1)
     fig, axes = plt.subplots(figsize=(size, size), dpi=500)
@@ -151,7 +155,7 @@ def plot_confusion_matrix(confusion_matrix, category_map, plot_filename):
         rotation = 90
     else:
         rotation = 0
-    axes.set_title("Confusion matrix")
+    axes.set_title(title)
     axes.set_xticks(range(n_classes), labels=category_map.values(), rotation=rotation)
     axes.set_yticks(range(n_classes), labels=category_map.values())
     axes.set_ylabel("Actual")
@@ -159,7 +163,7 @@ def plot_confusion_matrix(confusion_matrix, category_map, plot_filename):
     axes.xaxis.set_ticks_position("bottom")
     for i in range(n_classes):
         for j in range(n_classes):
-            axes.text(j, i, int(confusion_matrix[i, j]), ha="center", va="center")
+            axes.text(j, i, confusion_matrix[i, j], ha="center", va="center")
     plt.colorbar(mat)
     fig.tight_layout()
     plt.savefig(plot_filename)
@@ -222,6 +226,20 @@ def plot_shap_values(model, dataset, category_map, num_classes, feature_names, p
     plt.savefig(plot_filename)
     plt.close(fig)
     return shap_values_per_class
+
+
+def plot_anomalies(scores, labels, threshold, category_map, plot_filename):
+    fig = plt.figure(figsize=(10,7))
+    ax = fig.add_subplot()
+    for key, category in category_map.items():
+        indices = np.where(labels == key)[0]
+        ax.scatter(indices, scores[indices], label=category)
+    ax.set_title("Isolation forest anomaly scores")
+    ax.axhline(threshold, color="r", linestyle="-", linewidth=3)
+    ax.legend()
+    ax.set_xlabel("Indices")
+    ax.set_ylabel("Score")
+    fig.savefig(plot_filename)
 
 
 def prepare_test_metrics(num_classes: int, device: torch.device = torch.device("cuda"), 

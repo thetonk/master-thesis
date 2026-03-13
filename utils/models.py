@@ -12,7 +12,7 @@ class ModelTypes(enum.StrEnum):
     CNN = enum.auto()
     TRANSFORMER = enum.auto()
     LSTM = enum.auto()
-#    AUTOENCODER = enum.auto()
+    ISOFOREST = enum.auto()
 
 
 def get_model(model_type: ModelTypes, model_hyperparameters, num_features, num_classes) -> torch.nn.Module:
@@ -172,32 +172,3 @@ class MyCNNModel(nn.Module):
         x = self.flatten(x)
         x = self.mlp_classifier(x)
         return x
-
-
-class MyAutoEncoderModel(nn.Module):
-    def __init__(self, n_features):
-        super().__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(n_features, 64),
-            nn.ReLU(),
-            nn.Linear(64, 32),
-            nn.ReLU(),
-            nn.Linear(32, 16),
-            nn.ReLU(),
-            nn.Linear(16,8),
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(8, 16),
-            nn.ReLU(),
-            nn.Linear(16, 32),
-            nn.ReLU(),
-            nn.Linear(32, 64),
-            nn.ReLU(),
-            nn.Linear(64, n_features),
-        )
-
-
-    def forward(self, x: torch.Tensor):
-        z = self.encoder(x)
-        out = self.decoder(z)
-        return out
