@@ -135,7 +135,7 @@ def test_model(model: nn.Module, test_loader: DataLoader, metrics: list[Metric],
         metric_results.append(metric.compute().cpu().numpy())
     test_loss = test_loss/num_batches
     # First metric is accuracy according to prepare_test_metrics() function
-    accuracy = metric_results[0].item()
+    accuracy = metric_results[0].mean().item()
     print(f"Testset accuracy: {100*accuracy:.3f}%, average loss: {test_loss}")
     return metric_results
 

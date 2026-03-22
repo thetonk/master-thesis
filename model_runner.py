@@ -98,7 +98,8 @@ if __name__ == "__main__":
                 config_file = os.path.join(raytune_results_dir, "test_raytune_transformer", "best_config.json")
                 print(f"Config file not specified! Defaulting to {config_file}!")
         elif model_name == ModelTypes.CNN:
-            raise InvalidArgumentException("Config file for CNN not specified!")
+            if config_file is None:
+                raise InvalidArgumentException("Config file for CNN not specified!")
         else:
             use_config = False
 
