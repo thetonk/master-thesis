@@ -35,29 +35,26 @@ Please note that for the model hyperparameter tuning, search space is limited. T
 > [!WARNING]
 > To run the tuning script ([model_tuner.py](./model_tuner.py)), do not use uv, because there are compatibility issues running Ray Tune with uv by the time writing this. Instead, activate the python virtual environment manually according to the instructions (see the pip installation method) and run it using `python3 model_tuner.py <your-options>`.
 
-### Transformer-based model
-| Hyperparameter name  | Values                               |
-|----------------------|--------------------------------------|
-| `lr`                 | $10^{-4}, 10^{-3}, 10^{-2}$          |
-| `batch_size`         | 32, 64, 128, 256                     |
-| `enc_embedding_dim`  | 32, 64, 128, 256                     |
-| `ecn_num_heads`      | 4, 8, 16, 32                         |
-| `enc_ff_neurons`     | 64, 128, 256, 512                    |
-| `enc_ff_dropout`     | 0, 0.1, 0.2, 0.3                     |
-| `enc_attn_dropout`   | 0, 0.1, 0.2                          |
-| `mlp_hidden_neurons` | 128, 256, 512, 1024                  |
-| `num_encoders`       | 1, 2, 3, 4                           |
-| `num_mlps`           | 1, 2, 3, 4                           |
-| `mlp_dropout`        | 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4 |
+### Hyperparameters
+The hyperparameter search spaces for each model are available in the following table.
 
-### LSTM-based model
-| Hyperparameter name  | Values                               |
-|----------------------|--------------------------------------|
-| `lr`                 | $10^{-4}, 10^{-3}, 10^{-2}$          |
-| `batch_size`         | 32, 64, 128, 256                     |
-| `hidden_lstm_states` | 128, 256, 512                        |
-| `hidden_mlp_neurons` | 128, 256, 512, 1024                  |
-| `mlp_dropout`        | 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4 |
+|    Hyperparameter    |         Transformer         |             LSTM            |                CNN                 |
+|----------------------|-----------------------------|-----------------------------|------------------------------------|
+| `lr`                 | $[10^{-4}, 5\times10^{-3}]$ | $[10^{-4}, 5\times10^{-3}]$ | $[5\times10^{-4}, 5\times10^{-3}]$ |
+| `batch_size`         | {32,64,128,256}             | {32,64,128,256}             | {32,64,128,256}                    |
+| `mlp_hidden_neurons` | {128,256,512,1024}          | {128,256,512,1024}          | {64,128,256,512,1024}              |
+| `mlp_dropout`        | {0.1, 0.15, 0.2, ... , 0.4} | {0.1, 0.15, 0.2, ... , 0.4} | {0, 0.05, 0.1, ... , 0.3}          |
+| `enc_embedding_dim`  | {32,64,128,256}             | -                           | -                                  |
+| `enc_num_heads`      | {4,8,16,32}                 | -                           | -                                  |
+| `enc_ff_neurons`     | {64,128,256,512}            | -                           | -                                  |
+| `enc_ff_dropout`     | {0, 0.1, 0.2, 0.3}          | -                           | -                                  |
+| `enc_attn_dropout`   | {0, 0.1, 0.2}               | -                           | -                                  |
+| `num_encoders`       | {1,2,3,4}                   | -                           | -                                  |
+| `num_mlps`           | {1,2,3,4,5}                 | -                           | -                                  |
+| `hidden_lstm_states` | -                           | {128,256,512}               | -                                  |
+| `kernel_size`        | -                           | -                           | {3,4, ... ,10}                     |
+| `padding`            |                             |                             | {0,1,2,3}                          |
+| `conv_layers`        | -                           | -                           | {4,5, ... , 10}                    |
 
 ## Experiment results
 Results are located under `results` folder and contains the following directories:
